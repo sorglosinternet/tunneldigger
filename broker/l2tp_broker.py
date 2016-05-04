@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
+import binascii
 import ConfigParser
 import conntrack
 import construct as cs
@@ -72,6 +73,7 @@ CONTROL_TYPE_PMTUD     = 0x06
 CONTROL_TYPE_PMTUD_ACK = 0x07
 CONTROL_TYPE_REL_ACK   = 0x08
 CONTROL_TYPE_PMTU_NTFY = 0x09
+CONTROL_TYPE_USAGE     = 0x0A
 
 # Error Reason Byte
 # e.g. a client shutdown. it sends 0x11 to the server which answer with 0x00 (other request)
@@ -951,6 +953,22 @@ class TunnelManager(object):
     self.cookies.put(endpoint, cookie)
     return cookie
 
+  def usage(self, endpoint):
+    """
+    returns usage information
+
+    :param endpoint: Endpoint tuple
+    :return: Usage information (1 byte)
+      0 (broker is not used)..255 (broker is used to hard)
+    """
+
+    val = int( 1.0 * (len(self.tunnels) / (self.max_tunnels * 1.0)) * 255)
+    val = hex(val)[2:]
+    if len(val)  % 2 == 1:
+      val = '0' + val
+
+    return binascii.unhexlify(val)
+
   def verify_cookie(self, endpoint, cookie):
     """
     Verifies if the endpoint has generated a valid cookie.
@@ -1153,6 +1171,12 @@ class MessageHandler(object):
       # Respond with a cookie
       self.send_message(socket, CONTROL_TYPE_COOKIE, self.manager.issue_cookie(address),
         address)
+
+    elif msg.type == CONTROL_TYPE_USAGE:
+        # Respond with usage information
+        usage = self.manager.usage(address)
+        self.send_message(socket, CONTROL_TYPE_USAGE, usage, address)
+
     elif msg.type == CONTROL_TYPE_PREPARE:
       # Parse the prepare message
       try:
