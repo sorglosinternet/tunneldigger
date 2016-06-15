@@ -1177,8 +1177,9 @@ void context_process(l2tp_context *ctx)
       }
       break;
     }
-    case STATE_IDLE:
+    case STATE_IDLE: {
       break;
+    }
   }
 }
 
