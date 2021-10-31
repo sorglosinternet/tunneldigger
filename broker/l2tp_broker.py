@@ -18,9 +18,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 import binascii
-import ConfigParser
+import configparser
 import conntrack
-import construct as cs
+import construct
 import datetime
 import fcntl
 import gevent
@@ -39,28 +39,25 @@ import sys
 import traceback
 import traffic_control
 
-try:
-  from gevent import subprocess as gevent_subprocess
-except ImportError:
-  import gevent_subprocess
+from gevent import subprocess as gevent_subprocess
 
 # Control message for our protocol; first few bits are special as we have to
 # maintain compatibility with LTPv3 in the kernel (first bit must be 1); also
 # the packet must be at least 12 bytes in length, otherwise some firewalls
 # may filter it when used over port 53
-ControlMessage = cs.Struct("control",
+ControlMessage = construct.Struct(
   # Ensure that the first bit is 1 (L2TP control packet)
-  cs.Const(cs.UBInt8("magic1"), 0x80),
+  "magic1" / construct.Const(0x80, construct.Int8ub),
   # Reduce conflict matching to other protocols as we run on port 53
-  cs.Const(cs.UBInt16("magic2"), 0x73A7),
+  "magic2" / construct.Const(0x73A7, construct.Int16ub),
   # Protocol version to allow future upgrades
-  cs.UBInt8("version"),
+  "version" / construct.Int8ub,
   # Message type
-  cs.UBInt8("type"),
+  "type" / construct.Int8ub,
   # Message data (with length prefix)
-  cs.PascalString("data"),
+  "data" / construct.PascalString(construct.VarInt, "utf8"),
   # Pad the message so it is at least 12 bytes long
-  cs.Optional(cs.Padding(lambda ctx: max(0, 6 - len(ctx["data"])))),
+  construct.Optional(construct.Padding(lambda ctx: max(0, 6 - len(ctx["data"])))),
 )
 
 # Unreliable messages (0x00 - 0x7F)
@@ -92,24 +89,24 @@ MASK_CONTROL_TYPE_RELIABLE = 0x80
 CONTROL_TYPE_LIMIT     = 0x80
 
 # Prepare message
-PrepareMessage = cs.Struct("prepare",
-  cs.String("cookie", 8),
-  cs.PascalString("uuid"),
-  cs.Optional(cs.UBInt16("tunnel_id")),
+PrepareMessage = construct.Struct(
+  "cookie" / construct.PaddedString(8, 'utf8'),
+  "uuid" / construct.PascalString(construct.VarInt, 'utf8'),
+  "tunnel_id" / construct.Optional(construct.Int16ub),
 )
 
 # Limit message
-LimitMessage = cs.Struct("limit",
+LimitMessage = construct.Struct(
   # Limit type
-  cs.UBInt8("type"),
+  "type" / construct.Int8ub,
   # Limit configuration
-  cs.PascalString("data")
+  "data" / construct.PascalString(8, 'utf8')
 )
 
 # Error message
-ErrorMessage = cs.Struct("error",
+ErrorMessage = construct.Struct(
   # reason type
-  cs.UBInt8("reason"),
+  "reason" / construct.Int8ub,
 )
 
 LIMIT_TYPE_BANDWIDTH_DOWN = 0x01
@@ -141,7 +138,7 @@ IP_PMTUDISC_PROBE = 3
 SO_BINDTODEVICE = 25
 
 # L2TP generic netlink
-L2TP_GENL_NAME = "l2tp"
+L2TP_GENL_NAME = b"l2tp"
 L2TP_GENL_VERSION = 0x1
 
 # L2TP netlink commands
@@ -234,7 +231,7 @@ class NetlinkInterface(object):
 
     try:
       reply = self.connection.recv()
-    except OSError, e:
+    except OSError as e:
       if e.errno == 17:
         # This tunnel identifier is already in use; make sure to remove it from
         # our pool of assignable tunnel identifiers
@@ -288,13 +285,13 @@ class NetlinkInterface(object):
       netlink.U32Attr(L2TP_ATTR_PEER_SESSION_ID, peer_session_id),
       netlink.U16Attr(L2TP_ATTR_PW_TYPE, L2TP_PWTYPE_ETH),
       # TODO cookies
-      netlink.NulStrAttr(L2TP_ATTR_IFNAME, name),
+      netlink.NulStrAttr(L2TP_ATTR_IFNAME, bytes(name, 'utf-8')),
     ])
     msg.send(self.connection)
 
     try:
       reply = self.connection.recv()
-    except OSError, e:
+    except OSError as e:
       raise NetlinkError
 
   def session_delete(self, tunnel_id, session_id):
@@ -370,8 +367,8 @@ class Limits(object):
     if limit.type == LIMIT_TYPE_BANDWIDTH_DOWN:
       # Downstream (client-wise) limit setup
       try:
-        bandwidth = cs.UBInt32("bandwidth").parse(limit.data)
-      except cs.ConstructError:
+        bandwidth = construct.Int32ub().parse(limit.data)
+      except construct.ConstructError:
         logger.warning("Invalid bandwidth limit requested on tunnel %d." % self.tunnel.id)
         return
 
@@ -448,7 +445,7 @@ class Tunnel(gevent.Greenlet):
     """
     while True:
       self.handler.send_message(self.socket, CONTROL_TYPE_KEEPALIVE,
-          cs.UBInt32("size").build(self._next_keepalive_sequence_number()))
+          construct.Int32ub().build(self._next_keepalive_sequence_number()))
 
       # Check if we are still alive or not; if not, kill the tunnel
       timeout_interval = self.manager.config.getint("broker", "tunnel_timeout")
@@ -481,10 +478,10 @@ class Tunnel(gevent.Greenlet):
       self.num_pmtu_replies = 0
 
       # Transmit PMTU probes of different sizes multiple times
-      for _ in xrange(4):
+      for _ in range(4):
         for size in [1334, 1400, 1450, 1476, 1492, 1500]:
           try:
-            msg = ControlMessage.build(cs.Container(
+            msg = ControlMessage.build(construct.Container(
               magic1 = 0x80,
               magic2 = 0x73A7,
               version = 1,
@@ -515,7 +512,7 @@ class Tunnel(gevent.Greenlet):
 
       # Notify the client of the detected PMTU
       self.handler.send_message(self.socket, CONTROL_TYPE_PMTU_NTFY,
-        cs.UBInt16("mtu").build(self.pmtu))
+                                construct.Int16ub().build(self.pmtu))
 
       # Increase probe interval until it reaches 10 minutes
       probe_interval = min(600, probe_interval * 2)
@@ -544,7 +541,7 @@ class Tunnel(gevent.Greenlet):
       # Receive control messages from the socket
       try:
         data, address = self.socket.recvfrom(2048)
-      except gsocket.error, e:
+      except gsocket.error as e:
         if e.errno in (90, 97):
           # Ignore EMSGSIZE errors as they ocurr when performing PMTU discovery
           # and remote nodes send us ICMP fragmentation needed messages
@@ -586,10 +583,10 @@ class Tunnel(gevent.Greenlet):
 
         # Reply with ACK packet
         self.handler.send_message(self.socket, CONTROL_TYPE_PMTUD_ACK,
-          cs.UBInt16("size").build(len(data)))
+          construct.Int16ub().build(len(data)))
       elif msg.type == CONTROL_TYPE_PMTUD_ACK:
         # Decode ACK packet and extract size
-        psize = cs.UBInt16("size").parse(msg.data) + IPV4_HDR_OVERHEAD
+        psize = construct.Int16ub().parse(msg.data) + IPV4_HDR_OVERHEAD
         self.num_pmtu_replies += 1
 
         if psize > self.probed_pmtu:
@@ -599,7 +596,7 @@ class Tunnel(gevent.Greenlet):
           continue
 
         # Decode MTU notification packet
-        pmtu = cs.UBInt16("mtu").parse(msg.data)
+        pmtu = construct.Int16ub().parse(msg.data)
         if self.peer_pmtu != pmtu:
           self.peer_pmtu = pmtu
           self._update_mtu()
@@ -612,7 +609,7 @@ class Tunnel(gevent.Greenlet):
           # Client requests limit configuration
           try:
             limit = LimitMessage.parse(data)
-          except cs.ConstructError:
+          except construct.ConstructError:
             logger.warning("Invalid limit control message received on tunnel %d." % self.id)
             return
 
@@ -654,8 +651,9 @@ class Tunnel(gevent.Greenlet):
     """
     try:
       self.socket = gsocket.socket(gsocket.AF_INET, gsocket.SOCK_DGRAM)
+      self.socket.setsockopt(gsocket.SOL_SOCKET, gsocket.SO_REUSEPORT, 1)
+      self.socket.setsockopt(gsocket.SOL_SOCKET, gsocket.SO_BINDTODEVICE, bytes(self.manager.interface, 'utf-8'))
       self.socket.bind((self.manager.address, self.port))
-      self.socket.setsockopt(gsocket.SOL_SOCKET, SO_BINDTODEVICE, self.manager.interface)
       self.socket.connect(self.endpoint)
       self.socket.setsockopt(gsocket.IPPROTO_IP, IP_MTU_DISCOVER, IP_PMTUDISC_PROBE)
     except gsocket.error:
@@ -701,8 +699,7 @@ class Tunnel(gevent.Greenlet):
     self.next_session_id += 1
 
     try:
-      self.manager.netlink.session_create(self.id, session.id, session.peer_id,
-        session.name)
+      self.manager.netlink.session_create(self.id, session.id, session.peer_id, session.name)
     except:
       del self.sessions[session.id]
       raise
@@ -995,7 +992,7 @@ class TunnelManager(object):
       return None, False
 
     try:
-      ifreq = (session.name + '\0' * 16)[:16]
+      ifreq = (bytes(session.name, 'utf-8') + b'\0' * 16)[:16]
       data = struct.pack("16si", ifreq, mtu)
       fcntl.ioctl(tunnel.socket, SIOCSIFMTU, data)
     except IOError:
@@ -1125,7 +1122,7 @@ class MessageHandler(object):
     :param data: Optional payload
     :param address: Optional destination address
     """
-    msg = ControlMessage.build(cs.Container(
+    msg = ControlMessage.build(construct.Container(
       magic1 = 0x80,
       magic2 = 0x73A7,
       version = 1,
@@ -1138,7 +1135,7 @@ class MessageHandler(object):
         socket.sendto(msg, address)
       else:
         socket.send(msg)
-    except gsocket.error, e:
+    except gsocket.error as e:
       logger.error("Failed to send() control message: %s (%d)" % (e.strerror, e.errno))
 
   def handle(self, socket, data, address):
@@ -1158,7 +1155,7 @@ class MessageHandler(object):
 
     try:
       msg = ControlMessage.parse(data)
-    except cs.ConstructError:
+    except construct.ConstructError:
       return
 
     # Parsing successful check message type
@@ -1181,7 +1178,7 @@ class MessageHandler(object):
       # Parse the prepare message
       try:
         prepare = PrepareMessage.parse(msg.data)
-      except cs.ConstructError:
+      except construct.ConstructError:
         return
 
       # Check for a cookie match
@@ -1195,7 +1192,7 @@ class MessageHandler(object):
         self.send_message(socket, CONTROL_TYPE_ERROR, address = address)
         return
 
-      self.send_message(socket, CONTROL_TYPE_TUNNEL, cs.UBInt32("tunnel_id").build(tunnel.id),
+      self.send_message(socket, CONTROL_TYPE_TUNNEL, construct.Int32ub().build(tunnel.id),
         address)
 
       if self.tunnel is None and created:
@@ -1232,8 +1229,9 @@ class BaseControl(gevent.Greenlet):
     # tunnel setup requests.
     socket = gsocket.socket(gsocket.AF_INET, gsocket.SOCK_DGRAM)
     try:
+      socket.setsockopt(gsocket.SOL_SOCKET, gsocket.SO_REUSEPORT, 1)
+      socket.setsockopt(gsocket.SOL_SOCKET, SO_BINDTODEVICE, bytes(self.manager.interface, 'utf-8'))
       socket.bind((self.manager.address, self.port))
-      socket.setsockopt(gsocket.SOL_SOCKET, SO_BINDTODEVICE, self.manager.interface)
     except gsocket.error:
       # Skip port which cannot be bound.
       logger.warning("Failed to bind to port '%d', skipping port." % self.port)
@@ -1265,30 +1263,30 @@ if __name__ == '__main__':
   try:
     # We must run as root
     if os.getuid() != 0:
-      print "ERROR: Must be root."
+      print("ERROR: Must be root.")
       sys.exit(1)
 
     # Parse configuration (first argument must be the location of the configuration
     # file)
-    config = ConfigParser.SafeConfigParser()
+    config = configparser.SafeConfigParser()
     try:
       config.read(sys.argv[1])
     except IOError:
-      print "ERROR: Failed to open the specified configuration file '%s'!" % sys.argv[1]
+      print("ERROR: Failed to open the specified configuration file '%s'!" % sys.argv[1])
       sys.exit(1)
     except IndexError:
-      print "ERROR: First argument must be a configuration file path!"
+      print("ERROR: First argument must be a configuration file path!")
       sys.exit(1)
 
     do_check_modules = True
     try:
       do_check_modules = config.getboolean("broker", "check_modules")
-    except ConfigParser.NoOptionError:
+    except configparser.NoOptionError:
       pass
 
     if do_check_modules and not check_for_modules():
-      print "ERROR: You must install the following kernel modules:"
-      print ",".join(required_modules)
+      print("ERROR: You must install the following kernel modules:")
+      print(",".join(required_modules))
       sys.exit(1)
 
     setup_logging(config)

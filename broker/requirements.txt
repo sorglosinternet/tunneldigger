@@ -1,6 +1,8 @@
-construct==2.5.2
-gevent==1.2.1
-greenlet==0.4.12
-netfilter==0.6.2
-repoze.lru==0.6
+construct==2.10.67
+gevent==21.8.0
+greenlet==1.1.2
+netfilter==0.6.4
+repoze.lru==0.7
 six==1.10.0
+zope.event==4.5.0
+zope.interface==5.4.0

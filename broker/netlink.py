@@ -36,7 +36,7 @@ class Attr:
         hdr = struct.pack("HH", len(self.data)+4, self.type)
         length = len(self.data)
         pad = ((length + 4 - 1) & ~3) - length
-        return hdr + self.data + '\0' * pad
+        return hdr + self.data + b'\0' * pad
 
     def __repr__(self):
         return '<Attr type %d, data "%s">' % (self.type, repr(self.data))
@@ -119,7 +119,7 @@ class Message:
             contents = []
             for attr in payload:
                 contents.append(attr._dump())
-            self.payload = ''.join(contents)
+            self.payload = b''.join(contents)
         else:
             self.payload = payload
 
