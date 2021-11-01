@@ -24,6 +24,7 @@ import construct
 import datetime
 import fcntl
 import gevent
+import gevent.signal as gsignal
 import gevent.socket as gsocket
 import genetlink
 import logging
@@ -1307,8 +1308,8 @@ if __name__ == '__main__':
       for base in bases:
         base.kill()
 
-    gevent.signal(signal.SIGTERM, shutdown_broker)
-    gevent.signal(signal.SIGINT, shutdown_broker)
+    gsignal.signal(signal.SIGTERM, shutdown_broker)
+    gsignal.signal(signal.SIGINT, shutdown_broker)
 
     try:
       for base in bases:
