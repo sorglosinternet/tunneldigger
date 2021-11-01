@@ -369,7 +369,7 @@ class Limits(object):
     if limit.type == LIMIT_TYPE_BANDWIDTH_DOWN:
       # Downstream (client-wise) limit setup
       try:
-        bandwidth = construct.Int32ub().parse(limit.data)
+        bandwidth = construct.Int32ub.parse(limit.data)
       except construct.ConstructError:
         logger.warning("Invalid bandwidth limit requested on tunnel %d." % self.tunnel.id)
         return
@@ -414,6 +414,10 @@ class Tunnel(gevent.Greenlet):
     self.id = -1
     self.keep_alive()
     self.last_keepalive_sequence_number = 0
+    self.endpoint = ()
+    self.keep_alive_do = None
+    self.pmtu_probe_do = None
+
 
   def _next_keepalive_sequence_number(self):
     self.last_keepalive_sequence_number += 1
@@ -447,7 +451,7 @@ class Tunnel(gevent.Greenlet):
     """
     while True:
       self.handler.send_message(self.socket, CONTROL_TYPE_KEEPALIVE,
-          construct.Int32ub().build(self._next_keepalive_sequence_number()))
+          construct.Int32ub.build(self._next_keepalive_sequence_number()))
 
       # Check if we are still alive or not; if not, kill the tunnel
       timeout_interval = self.manager.config.getint("broker", "tunnel_timeout")
@@ -488,10 +492,11 @@ class Tunnel(gevent.Greenlet):
               magic2 = 0x73A7,
               version = 1,
               type = CONTROL_TYPE_PMTUD,
-              data = ""
+              data_size = 0,
+              data = b""
             ))
             # We need to subtract 6 because ControlMessage gets auto-padded to 12 bytes
-            msg += '\x00' * (size - IPV4_HDR_OVERHEAD - L2TP_CONTROL_SIZE - 6)
+            msg += b'\x00' * (size - IPV4_HDR_OVERHEAD - L2TP_CONTROL_SIZE - 6)
 
             self.socket.send(msg)
             self.num_pmtu_probes += 1
@@ -514,7 +519,7 @@ class Tunnel(gevent.Greenlet):
 
       # Notify the client of the detected PMTU
       self.handler.send_message(self.socket, CONTROL_TYPE_PMTU_NTFY,
-                                construct.Int16ub().build(self.pmtu))
+                                construct.Int16ub.build(self.pmtu))
 
       # Increase probe interval until it reaches 10 minutes
       probe_interval = min(600, probe_interval * 2)
@@ -585,10 +590,10 @@ class Tunnel(gevent.Greenlet):
 
         # Reply with ACK packet
         self.handler.send_message(self.socket, CONTROL_TYPE_PMTUD_ACK,
-          construct.Int16ub().build(len(data)))
+          construct.Int16ub.build(len(data)))
       elif msg.type == CONTROL_TYPE_PMTUD_ACK:
         # Decode ACK packet and extract size
-        psize = construct.Int16ub().parse(msg.data) + IPV4_HDR_OVERHEAD
+        psize = construct.Int16ub.parse(msg.data) + IPV4_HDR_OVERHEAD
         self.num_pmtu_replies += 1
 
         if psize > self.probed_pmtu:
@@ -598,7 +603,7 @@ class Tunnel(gevent.Greenlet):
           continue
 
         # Decode MTU notification packet
-        pmtu = construct.Int16ub().parse(msg.data)
+        pmtu = construct.Int16ub.parse(msg.data)
         if self.peer_pmtu != pmtu:
           self.peer_pmtu = pmtu
           self._update_mtu()
@@ -1129,6 +1134,7 @@ class MessageHandler(object):
       magic2 = 0x73A7,
       version = 1,
       type = type,
+      data_size = len(data),
       data = data
     ))
 
@@ -1194,7 +1200,7 @@ class MessageHandler(object):
         self.send_message(socket, CONTROL_TYPE_ERROR, address = address)
         return
 
-      self.send_message(socket, CONTROL_TYPE_TUNNEL, construct.Int32ub().build(tunnel.id),
+      self.send_message(socket, CONTROL_TYPE_TUNNEL, construct.Int32ub.build(tunnel.id),
         address)
 
       if self.tunnel is None and created:
