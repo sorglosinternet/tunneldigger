@@ -792,7 +792,9 @@ class TunnelManager(object):
     self.cookies = repoze.lru.LRUCache(config.getint('broker', 'max_cookies'))
     self.secret = os.urandom(32)
     id_base = config.getint('broker', 'tunnel_id_base')
-    self.tunnel_ids = range(id_base, id_base + self.max_tunnels + 1)
+    self.tunnel_ids = []
+    for tunnel_id in range(id_base, id_base + self.max_tunnels + 1):
+      self.tunnel_ids.append(tunnel_id)
     self.port_base = config.getint('broker', 'port_base')
     self.interface = config.get('broker', 'interface')
     self.address = config.get('broker', 'address')
