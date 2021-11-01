@@ -102,7 +102,7 @@ LimitMessage = construct.Struct(
   # Limit type
   "type" / construct.Int8ub,
   # Limit configuration
-  "data" / construct.PascalString(8, 'utf8')
+  "bandwidth" / construct.Int32ub,
 )
 
 # Error message
@@ -369,7 +369,7 @@ class Limits(object):
     if limit.type == LIMIT_TYPE_BANDWIDTH_DOWN:
       # Downstream (client-wise) limit setup
       try:
-        bandwidth = construct.Int32ub.parse(limit.data)
+        bandwidth = limit.bandwidth
       except construct.ConstructError:
         logger.warning("Invalid bandwidth limit requested on tunnel %d." % self.tunnel.id)
         return
@@ -377,12 +377,13 @@ class Limits(object):
       logger.info("Setting bandwidth limit to %d kbps on tunnel %d." % (bandwidth, self.tunnel.id))
 
       # Setup bandwidth limit using Linux traffic shaping
-      try:
-        tc = traffic_control.TrafficControl(self.tunnel.sessions.values()[0].name)
-        tc.reset()
-        tc.set_fixed_bandwidth(bandwidth)
-      except traffic_control.TrafficControlError:
-        logger.warning("Unable to configure traffic shaping rules for tunnel %d." % self.tunnel.id)
+      for session in self.tunnel.sessions.values():
+        try:
+          tc = traffic_control.TrafficControl(session.name)
+          tc.reset()
+          tc.set_fixed_bandwidth(bandwidth)
+        except traffic_control.TrafficControlError:
+          logger.warning("Unable to configure traffic shaping rules for tunnel %d." % self.tunnel.id)
 
       return True
     else:
