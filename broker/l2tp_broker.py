@@ -407,7 +407,7 @@ class Tunnel(gevent.Greenlet):
     super(Tunnel, self).__init__()
     self.manager = manager
     self.handler = MessageHandler(manager, port, self)
-    self.external_port = port
+    self.external_port = self.port = port
     self.limits = Limits(self)
     self.sessions = {}
     self.next_session_id = 1
@@ -430,13 +430,6 @@ class Tunnel(gevent.Greenlet):
     Setup the tunnel and netfilter rules.
     """
     self.setup_tunnel()
-    try:
-      self.setup_netfilter()
-    except TunnelSetupFailed:
-      # Ensure that the tunnel gets closed in case netfilter code fails
-      # to execute - so we don't get lingering tunnels
-      self.socket.close()
-      raise
 
     # Spawn periodic keepalive transmitter and PMTUD
     self.keep_alive_do = gevent.spawn(self._keep_alive_do)
@@ -647,7 +640,6 @@ class Tunnel(gevent.Greenlet):
     self.handler.send_message(self.socket, CONTROL_TYPE_ERROR, bytearray([reason]))
 
     self.socket.close()
-    self.remove_netfilter()
 
     if kill:
       self.kill()
@@ -713,39 +705,6 @@ class Tunnel(gevent.Greenlet):
 
     return session
 
-  def setup_netfilter(self):
-    """
-    Sets up the netfilter rules for port translation.
-    """
-    self.prerouting_rule = netfilter.rule.Rule(
-      in_interface = self.manager.interface,
-      protocol = 'udp',
-      source = self.endpoint[0],
-      destination = self.manager.address,
-      matches = [
-        netfilter.rule.Match('udp', '--sport %d --dport %d' % (self.endpoint[1], self.external_port)),
-      ],
-      jump = netfilter.rule.Target('DNAT', '--to %s:%d' % (self.manager.address, self.port))
-    )
-
-    self.postrouting_rule = netfilter.rule.Rule(
-      out_interface = self.manager.interface,
-      protocol = 'udp',
-      source = self.manager.address,
-      destination = self.endpoint[0],
-      matches = [
-        netfilter.rule.Match('udp', '--sport %d --dport %d' % (self.port, self.endpoint[1])),
-      ],
-      jump = netfilter.rule.Target('SNAT', '--to %s:%d' % (self.manager.address, self.external_port))
-    )
-
-    try:
-      nat = netfilter.table.Table('nat')
-      nat.append_rule('L2TP_PREROUTING_%s' % self.manager.namespace, self.prerouting_rule)
-      nat.append_rule('L2TP_POSTROUTING_%s' % self.manager.namespace, self.postrouting_rule)
-    except netfilter.table.IptablesError:
-      raise TunnelSetupFailed
-
   def clear_conntrack(self):
     """
     Removes existing conntrack mappings, forcing the kernel to re-evaluate
@@ -757,17 +716,6 @@ class Tunnel(gevent.Greenlet):
       self.manager.conntrack.kill(conntrack.IPPROTO_UDP, self.manager.address, self.endpoint[0],
         self.external_port, self.endpoint[1])
     except conntrack.ConntrackError:
-      pass
-
-  def remove_netfilter(self):
-    """
-    Remove the netfilter rules for port translation.
-    """
-    try:
-      nat = netfilter.table.Table('nat')
-      nat.delete_rule('L2TP_PREROUTING_%s' % self.manager.namespace, self.prerouting_rule)
-      nat.delete_rule('L2TP_POSTROUTING_%s' % self.manager.namespace, self.postrouting_rule)
-    except netfilter.table.IptablesError:
       pass
 
   def keep_alive(self):
@@ -1082,7 +1030,6 @@ class TunnelManager(object):
       tunnel.id = self.tunnel_ids.pop(0)
       tunnel.peer_id = tunnel_id
       tunnel.endpoint = endpoint
-      tunnel.port = self.port_base + tunnel.id
       tunnel.cookie = cookie
       tunnel.setup()
     except IndexError:
