@@ -56,7 +56,8 @@ ControlMessage = construct.Struct(
   # Message type
   "type" / construct.Int8ub,
   # Message data (with length prefix)
-  "data" / construct.PascalString(construct.VarInt, "utf8"),
+  "data_size" / construct.Int8ub,
+  "data" / construct.Bytes(construct.this.data_size),
   # Pad the message so it is at least 12 bytes long
   construct.Optional(construct.Padding(lambda ctx: max(0, 6 - len(ctx["data"])))),
 )
@@ -91,7 +92,7 @@ CONTROL_TYPE_LIMIT     = 0x80
 
 # Prepare message
 PrepareMessage = construct.Struct(
-  "cookie" / construct.PaddedString(8, 'utf8'),
+  "cookie" / construct.Bytes(8),
   "uuid" / construct.PascalString(construct.VarInt, 'utf8'),
   "tunnel_id" / construct.Optional(construct.Int16ub),
 )
@@ -1114,7 +1115,7 @@ class MessageHandler(object):
     self.port = port
     self.tunnel = tunnel
 
-  def send_message(self, socket, type, data = "", address = None):
+  def send_message(self, socket, type, data = b"", address = None):
     """
     Builds and sends a control message.
 
