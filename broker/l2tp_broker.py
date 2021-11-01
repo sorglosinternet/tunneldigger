@@ -1043,7 +1043,7 @@ class TunnelManager(object):
       return None, False
     except TunnelSetupFailed:
       # Failed to setup a tunnel, abort now and reclaim the assigned id
-      logger.error("Failed to setup tunnel with id %d!" % tunnel.id)
+      logger.exception("Failed to setup tunnel with id %d!" % tunnel.id)
       self.tunnel_ids.append(tunnel.id)
       return None, False
 
