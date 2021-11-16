@@ -435,6 +435,8 @@ async def main():
 
         def shutdown_broker(signal: str):
             logger.error("Received signal %s", signal)
+            print("Received signal %s", signal)
+            print("Shutting down ...")
             asyncio.ensure_future(manager.close())
 
         manager = TunnelManager(config, close_future)
