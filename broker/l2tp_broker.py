@@ -170,7 +170,12 @@ class TunnelManager(object):
 
         try:
             # Ensure that all tunnels get closed
-            for tunnel in self.tunnels.values():
+            while True:
+                try:
+                    tunnel = self.tunnels.popitem()[1]
+                except KeyError:
+                    break
+
                 try:
                     # Kill must not be called as the manager's close method can be called
                     # from a signal handler and this may cause the greenlets to switch
@@ -275,7 +280,10 @@ class TunnelManager(object):
 
             logger.debug(traceback.format_exc())
 
-        del self.tunnels[tunnel.remote]
+        try:
+            del self.tunnels[tunnel.remote]
+        except KeyError:
+            pass
         self.tunnel_ids.append(tunnel.id)
 
     def get_tunnel(self, endpoint):
