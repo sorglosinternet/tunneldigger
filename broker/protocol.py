@@ -260,8 +260,9 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
 
         try:
             pdu = PDUS[pdu_type].parse(control.data)
-        except ConstructError:
+        except Exception as exp:
             self.packet_error(tunnel, "Failed to parse PDU type %x." % control.type, data)
+            LOG.debug("Exception while parsing pdu type %s", pdu_type, exc_info=True)
             return
 
         if tunnel:
@@ -278,8 +279,9 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
                 if pdu.type == LIMIT_TYPE_BANDWIDTH_DOWN:
                     try:
                         config_pdu = LimitBandwidth.parse(pdu.data)
-                    except ConstructError:
-                        return self.packet_error(tunnel, "Failed to parse Limit type %x" % pdu.type, data)
+                    except Exception as exp:
+                        self.packet_error(tunnel, "Failed to parse Limit type %x" % pdu.type, data)
+                        LOG.debug("While parsing LimitMessage %s", pdu.type, exc_info=True)
                     return tunnel.rx_limit(pdu.type, config_pdu)
 
         invalid_without_tunnel = [
