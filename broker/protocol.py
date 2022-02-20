@@ -215,6 +215,10 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
         pdu = PMTUNotifyMessage.build(dict(pmtu=pmtu))
         self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_PMTUD_NTFY, pdu)
 
+    def tx_relack(self, endpoint, sequence):
+        pdu = ReliableAckMessage.build(dict(sequence=sequence))
+        self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_REL_ACK, pdu)
+
     def connection_made(self, transport):
         self.transport = transport
 
