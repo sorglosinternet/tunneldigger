@@ -299,7 +299,7 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
             PDUTypes.CONTROL_TYPE_USAGE: self.tunnelmanager.usage,
             PDUTypes.CONTROL_TYPE_COOKIE: self.tunnelmanager.issue_cookie,
             PDUTypes.CONTROL_TYPE_PREPARE: self.tunnelmanager.prepare,
-            PDUTypes.CONTROL_TYPE_ERROR: lambda x, y: self.packet_error(tunnel, "Ignoring Error PDU %s" % endpoint, data)
+            PDUTypes.CONTROL_TYPE_ERROR: lambda x, y: self.packet_error(tunnel, "Ignoring Error PDU %s" % str(endpoint), data)
         }
 
         if pdu_type in tunnel_manager_pdu:
