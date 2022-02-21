@@ -116,11 +116,12 @@ UsageMessage = Struct(
 
 # Limit message
 LimitMessage = Struct(
+    "sequence" / Int16ub,
     # Limit type
     "type" / Int8ub,
     "config_len" / Int8ub,
     # so far only bandwidth is supported (Int32ub)
-    "data" / Bytes(this.data_size),
+    "config" / Bytes(this.config_len),
 )
 
 LimitBandwidth = Struct(
@@ -282,11 +283,11 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
             elif pdu_type == PDUTypes.CONTROL_TYPE_LIMIT:
                 if pdu.type == LIMIT_TYPE_BANDWIDTH_DOWN:
                     try:
-                        config_pdu = LimitBandwidth.parse(pdu.data)
+                        config_pdu = LimitBandwidth.parse(pdu.config)
                     except Exception as exp:
                         self.packet_error(tunnel, "Failed to parse Limit type %x" % pdu.type, data)
                         LOG.debug("While parsing LimitMessage %s", pdu.type, exc_info=True)
-                    return tunnel.rx_limit(pdu.type, config_pdu)
+                    return tunnel.rx_limit(pdu, config_pdu)
 
         invalid_without_tunnel = [
             PDUTypes.CONTROL_TYPE_KEEPALIVE,

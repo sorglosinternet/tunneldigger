@@ -34,12 +34,12 @@ class Limits(object):
             LOG.info("Setting bandwidth limit to %d kbps on tunnel %d." % (bandwidth, self.tunnel.id))
 
             # Setup bandwidth limit using Linux traffic shaping
-            for session in self.tunnel.sessions.values():
-                try:
-                    tc = traffic_control.TrafficControl(session.name)
-                    asyncio.get_running_loop().call_soon(tc.set_fixed_bandwidth, bandwidth)
-                except traffic_control.TrafficControlError:
-                    LOG.warning("Unable to configure traffic shaping rules for tunnel %d." % self.tunnel.id)
+            # TODO: turn down the tunnel if tc fails
+            try:
+                tc = traffic_control.TrafficControl(self.tunnel.session_name)
+                asyncio.get_running_loop().call_soon(tc.set_fixed_bandwidth, bandwidth)
+            except traffic_control.TrafficControlError:
+                LOG.warning("Unable to configure traffic shaping rules for tunnel %d." % self.tunnel.id)
 
             return True
         else:

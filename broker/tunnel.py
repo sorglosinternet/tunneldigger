@@ -194,11 +194,11 @@ class Tunnel(object):
 
         # TODO: reliable ACK on type reliable
 
-    def rx_limit(self, limit_type, pdu):
+    def rx_limit(self, limit_pdu, limit_config_pdu):
         # Client requests limit configuration
-        if not self.limits.configure(limit_type, pdu):
-            LOG.warning("Unknown type of limit (%d) requested on tunnel %d." % (pdu.type, self.id))
-            return
+        if not self.limits.configure(limit_pdu.type, limit_config_pdu):
+            LOG.warning("Unknown type of limit (%d) requested on tunnel %d." % (limit_pdu.type, self.id))
+        self.protocol.tx_relack(self.remote, limit_pdu.sequence)
 
     def rx_keepalive(self, _pdu):
         self.keep_alive()
