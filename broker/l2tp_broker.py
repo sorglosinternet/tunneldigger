@@ -359,6 +359,9 @@ class TunnelManager(object):
             return tunnel, False
 
         # Tunnel has not yet been created, create a new tunnel
+        if len(self.tunnel_ids) == 0:
+            logger.warning("Ignoring tunnel with id %d. Server is full." % tunnel.id)
+            return None, False
         local_tunnel_id = self.tunnel_ids.pop(0)
         remote_tunnel_id = 1
         if pdu.features is not None:
