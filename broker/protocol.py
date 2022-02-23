@@ -110,7 +110,7 @@ ReliableAckMessage = Struct(
 # cli -> server: usage with dummy content, features with client features
 # server -> cli: usage with a real value, features of the server
 UsageMessage = Struct(
-    "usage" / Int32ub,
+    "usage" / Int16ub,
     "features" / Optional(Int32ub)
 )
 
