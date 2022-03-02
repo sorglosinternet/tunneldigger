@@ -210,7 +210,7 @@ class TunnelManager(object):
           0 (broker is not used)..255 (broker is used to hard)
         """
 
-        val = int(1.0 * (len(self.tunnels) / (self.max_tunnels * 1.0)) * 255)
+        val = min(int(1.0 * (len(self.tunnels) / (self.max_tunnels * 1.0)) * 255), 255)
         self.protocol.tx_usage(endpoint, val)
 
     def verify_cookie(self, endpoint, cookie):
