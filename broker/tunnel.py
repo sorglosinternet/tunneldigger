@@ -217,6 +217,7 @@ class Tunnel(object):
                                self.remote[1], self.remote[1], self.uuid)
 
         await self.broker.netlink.session_delete(self.id, self.session_id)
+        await self.broker.netlink.tunnel_delete(self.id)
 
         # Invoke any down hooks
         await self.broker.hook('session.down', self.id, self.session_id, self.session_name, self.pmtu, self.remote[0],
