@@ -112,16 +112,9 @@ class TunnelManager(object):
         try:
             script_process = await asyncio.create_subprocess_shell(
                 " ".join([script] + [str(x) for x in args]),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE)
-            stdout, stderr = await script_process.communicate()
-
-            if stdout:
-                logger.debug("Hook '%s' script stdout:" % script)
-                logger.debug(stdout)
-            if stderr:
-                logger.debug("Hook '%s' script stderr:" % script)
-                logger.warning(stderr)
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL)
+            await script_process.wait()
         except:
             logger.warning("Failed to execute hook '%s'!" % script)
             logger.warning(traceback.format_exc())
