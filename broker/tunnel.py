@@ -226,6 +226,10 @@ class Tunnel(object):
         # Transmit error message so the other end can tear down the tunnel
         # immediately instead of waiting for keepalive timeout
         self.protocol.tx_error(self.remote, reason)
+        if self.socket:
+            self.socket.close()
+        del self.socket
+
 
     async def setup_tunnel(self):
         """
