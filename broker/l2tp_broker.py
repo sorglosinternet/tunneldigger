@@ -163,10 +163,10 @@ class TunnelManager(object):
 
         try:
             # Ensure that all tunnels get closed
-            tunnels = [tunnel.close(kill=False, reason=PDUError.ERROR_REASON_SHUTDOWN.value) for tunnel in self.tunnels.values()]
+            tunnels = (tunnel.close(kill=False, reason=PDUError.ERROR_REASON_SHUTDOWN.value) for tunnel in self.tunnels.values())
 
             try:
-                await asyncio.gather(tunnels)
+                await asyncio.gather(*tunnels)
             except:
                 logger.warning("Failed to close all tunnels!")
                 logger.debug(traceback.format_exc())
