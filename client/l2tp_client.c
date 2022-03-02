@@ -1026,7 +1026,7 @@ void context_process(l2tp_context *ctx)
       while (msg != NULL) {
         if (is_timeout(&msg->timer_rexmit, 1)) {
           if (++msg->retries >= 10) {
-            syslog(LOG_WARNING, "Dropping message that has been retried too many times.");
+            syslog(LOG_WARNING, "Dropping message 0x%02x that has been retried too many times.", msg->msg[4]);
 
             if (prev != NULL) {
               prev->next = msg->next;
