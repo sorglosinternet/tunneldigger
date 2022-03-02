@@ -163,21 +163,13 @@ class TunnelManager(object):
 
         try:
             # Ensure that all tunnels get closed
-            while True:
-                try:
-                    tunnel = self.tunnels.popitem()[1]
-                except KeyError:
-                    break
+            tunnels = [tunnel.close(kill=False, reason=PDUError.ERROR_REASON_SHUTDOWN.value) for tunnel in self.tunnels.values()]
 
-                try:
-                    # Kill must not be called as the manager's close method can be called
-                    # from a signal handler and this may cause the greenlets to switch
-                    # to hub which may cause the application to exit prematurely
-                    await tunnel.close(kill=False, reason=PDUError.ERROR_REASON_SHUTDOWN.value)
-                except:
-                    logger.warning("Failed to close tunnel!")
-                    logger.debug(traceback.format_exc())
-                    continue
+            try:
+                await asyncio.gather(tunnels)
+            except:
+                logger.warning("Failed to close all tunnels!")
+                logger.debug(traceback.format_exc())
 
             # Close any stale tunnels that might still be up
             id_base = self.config.getint('broker', 'tunnel_id_base')
