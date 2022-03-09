@@ -39,8 +39,9 @@ class TrafficControl(object):
         """
         Executes a traffic control command.
         """
-        script_process = await asyncio.create_subprocess_shell(
-            [TC] + shlex.split(command),
+        cmds = [TC] + shlex.split(command)
+        script_process = await asyncio.create_subprocess_exec(
+            *cmds,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL)
         exit_code = await script_process.wait()
