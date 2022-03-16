@@ -19,19 +19,19 @@ def get_socket(bind):
     return sock
 
 class Tunnel(object):
-    def __init__(self, broker, bind, remote, uuid, tunnel_id, remote_tunnel_id, pmtu_fixed, cookie,
+    def __init__(self, manager, bind, remote, uuid, tunnel_id, remote_tunnel_id, pmtu_fixed, cookie,
                  client_features=0):
         """
         Construct a tunnel.
 
-        :param broker: Broker instance that received the initial request
+        :param manager: Broker instance that received the initial request
         :param bind: Destination broker address (host, port) tuple
         :param remote: Remote tunnel endpoint address (host, port) tuple
         :param uuid: Unique tunnel identifier received from the remote host
         :param tunnel_id: Locally assigned tunnel identifier
         :param remote_tunnel_id: Remotely assigned tunnel identifier
         """
-        self.broker = broker
+        self.manager = manager
         self.limits = Limits(self)
         self.next_session_id = 1
         self.id = tunnel_id
@@ -45,7 +45,7 @@ class Tunnel(object):
         self.uuid = uuid
         self.remote_tunnel_id = remote_tunnel_id
         self.client_features = client_features
-        self.transport = self.protocol = None
+        self.protocol = TunneldiggerProtocol(self.manager, self)
         self.session_id = self.id if self.client_features & FEATURE_UNIQUE_SESSION_ID else 1
         self.remote_session_id = self.remote_tunnel_id
         self.session_name = "l2tp%d%d" % (self.session_id, self.remote_session_id)
@@ -85,16 +85,16 @@ class Tunnel(object):
             self.protocol.tx_keepalive(self.remote, self._next_keepalive_sequence_number())
 
             # Check if we are still alive or not; if not, kill the tunnel
-            timeout_interval = self.broker.config.getint("broker", "tunnel_timeout")
+            timeout_interval = self.manager.config.getint("broker", "tunnel_timeout")
             if datetime.datetime.now() - self.last_alive > datetime.timedelta(seconds=timeout_interval):
-                if self.broker.config.getboolean('log', 'log_ip_addresses'):
+                if self.manager.config.getboolean('log', 'log_ip_addresses'):
                     LOG.warning("Session with tunnel %d to %s:%d timed out." % (self.id, self.remote[0],
                                                                                 self.remote[1]))
                 else:
                     LOG.warning("Session with tunnel %d timed out." % self.id)
 
-                asyncio.create_task(self.broker.close_tunnel(self,
-                    PDUDirection.ERROR_REASON_FROM_SERVER.value & PDUError.ERROR_REASON_TIMEOUT.value))
+                asyncio.create_task(self.manager.close_tunnel(self,
+                                                              PDUDirection.ERROR_REASON_FROM_SERVER.value & PDUError.ERROR_REASON_TIMEOUT.value))
                 return
 
             await asyncio.sleep(60.0)
@@ -148,12 +148,12 @@ class Tunnel(object):
         if detected_pmtu == self.tunnel_mtu:
             return
 
-        await self.broker.session_set_mtu(self, detected_pmtu)
+        await self.manager.session_set_mtu(self, detected_pmtu)
 
         # Invoke MTU change hook for each session
-        await self.broker.hook('session.mtu-changed', self.id, self.session_id, self.session_name,
-                               self.tunnel_mtu,
-                               detected_pmtu, self.uuid)
+        await self.manager.hook('session.mtu-changed', self.id, self.session_id, self.session_name,
+                                self.tunnel_mtu,
+                                detected_pmtu, self.uuid)
 
         LOG.debug("Detected PMTU of %d for tunnel %d." % (detected_pmtu, self.id))
         self.tunnel_mtu = detected_pmtu
@@ -164,8 +164,8 @@ class Tunnel(object):
                 "Error message received from client, tearing down tunnel %d. Reason %d" % (self.id, pdu.error))
         else:
             LOG.warning("Error message received from client, tearing down tunnel %d." % self.id)
-        asyncio.create_task(self.broker.close_tunnel(self,
-                                                     PDUDirection.ERROR_REASON_FROM_SERVER.value & PDUError.ERROR_REASON_OTHER_REQUEST.value))
+        asyncio.create_task(self.manager.close_tunnel(self,
+                                                      PDUDirection.ERROR_REASON_FROM_SERVER.value & PDUError.ERROR_REASON_OTHER_REQUEST.value))
 
     def rx_pmtu(self, data):
         if self.pmtu_fixed:
@@ -185,7 +185,7 @@ class Tunnel(object):
             self.probed_pmtu = psize
 
     def rx_pmtunotify(self, pdu):
-        if not self.broker.config.getboolean("broker", "pmtu_discovery"):
+        if not self.manager.config.getboolean("broker", "pmtu_discovery"):
             return
         # Decode MTU notification packet
         if self.peer_pmtu != pdu.pmtu:
@@ -212,16 +212,16 @@ class Tunnel(object):
                 task.cancel()
 
         # Invoke any pre-down hooks
-        await self.broker.hook('session.pre-down', self.id, self.session_id, self.session_name, self.pmtu,
-                               self.remote[0],
-                               self.remote[1], self.remote[1], self.uuid)
+        await self.manager.hook('session.pre-down', self.id, self.session_id, self.session_name, self.pmtu,
+                                self.remote[0],
+                                self.remote[1], self.remote[1], self.uuid)
 
-        await self.broker.netlink.session_delete(self.id, self.session_id)
-        await self.broker.netlink.tunnel_delete(self.id)
+        await self.manager.netlink.session_delete(self.id, self.session_id)
+        await self.manager.netlink.tunnel_delete(self.id)
 
         # Invoke any down hooks
-        await self.broker.hook('session.down', self.id, self.session_id, self.session_name, self.pmtu, self.remote[0],
-                               self.remote[1], self.remote[1], self.uuid)
+        await self.manager.hook('session.down', self.id, self.session_id, self.session_name, self.pmtu, self.remote[0],
+                                self.remote[1], self.remote[1], self.uuid)
 
         # Transmit error message so the other end can tear down the tunnel
         # immediately instead of waiting for keepalive timeout
@@ -253,15 +253,15 @@ class Tunnel(object):
 
         # Make the socket an encapsulation socket by asking the kernel to do so
         try:
-            await self.broker.netlink.tunnel_create(self.id, self.remote_tunnel_id, self.socket.fileno())
-            await self.broker.netlink.session_create(self.id, self.session_id, self.remote_session_id,
-                                                     self.session_name)
+            await self.manager.netlink.tunnel_create(self.id, self.remote_tunnel_id, self.socket.fileno())
+            await self.manager.netlink.session_create(self.id, self.session_id, self.remote_session_id,
+                                                      self.session_name)
         except L2TPTunnelExists as exc:
             self.socket.close()
-            self.broker.tunnel_exception(self, exc)
+            self.manager.tunnel_exception(self, exc)
         except NetlinkError as exc:
             self.socket.close()
-            self.broker.tunnel_exception(self, exc)
+            self.manager.tunnel_exception(self, exc)
 
         # Spawn periodic keepalive transmitter and PMTUD
         self.keep_alive_do = asyncio.create_task(self._keep_alive_do())
@@ -274,8 +274,8 @@ class Tunnel(object):
         confirmation packet has been transmitted from the broker to the client),
         otherwise port translation will not work and the tunnel will be dead.
         """
-        asyncio.create_task(self.broker.hook('session.up', self.id, self.session_id, self.session_name, self.pmtu,
-                                             self.remote[0], self.remote[1], self.remote[1], self.uuid))
+        asyncio.create_task(self.manager.hook('session.up', self.id, self.session_id, self.session_name, self.pmtu,
+                                              self.remote[0], self.remote[1], self.remote[1], self.uuid))
 
     def keep_alive(self):
         """
