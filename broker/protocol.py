@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import asyncio
+import asyncudp
 import logging
 from enum import Enum
 
@@ -176,12 +177,30 @@ TD_MIN_PDU_LEN = 4
 class TunneldiggerProtocol(asyncio.DatagramProtocol):
     def __init__(self, tunnelmanager, tunnel):
         self.tunnelmanager = tunnelmanager
-        self.transport = None
         self.tunnel = tunnel
+        self.socket = None
+
+    async def sock_loop(self):
+        # ensure self.socket is present before calling sock_loop()
+        while True:
+            try:
+                data, addr = await self.socket.recvfrom()
+                self.datagram_received(data, addr)
+            except asyncudp.ClosedError:
+                self.socket.close()
+                self.socket = None
+                if self.tunnel:
+                    await self.tunnel.close()
+                return
+
+    def _send(self, data, endpoint):
+        if self.socket is None:
+            return
+        self.socket.sendto(data, endpoint)
 
     def tx_control(self, endpoint, pdu_type, data: bytes):
         control = ControlMessage.build(dict(version=1, type=pdu_type.value, data_size=len(data), data=data))
-        self.transport.sendto(control, endpoint)
+        self._send(control, endpoint)
 
     def tx_usage(self, endpoint, usage, features=None):
         pdu = UsageMessage.build(dict(usage=usage, features=features))
@@ -206,7 +225,7 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
     def tx_pmtu(self, endpoint, size):
         control = ControlMessage.build(dict(version=1, type=PDUTypes.CONTROL_TYPE_PMTUD.value, data_size=0, data=b''))
         control += b'\x00' * (size - IPV4_HDR_OVERHEAD - L2TP_CONTROL_SIZE - 6)
-        self.transport.sendto(control, endpoint)
+        self._send(control, endpoint)
 
     def tx_pmtuack(self, endpoint, pmtu):
         pdu = PMTUAckMessage.build(dict(pmtu=pmtu))
@@ -221,7 +240,7 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
         self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_REL_ACK, pdu)
 
     def connection_made(self, transport):
-        self.transport = transport
+        self.socket = transport
 
     def packet_error(self, tunnel, message: str, data: bytes):
         # TODO: allow to hexdump data when a flag/config is enabled
@@ -233,7 +252,8 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
 
     def connection_lost(self, exc):
         LOG.error("Lost UDP connection!")
-        self.tunnelmanager.terminate("Lost connection")
+        if self.tunnel:
+            self.tunnel.terminate("Lost connection")
 
     def datagram_received(self, data, endpoint):
         """Called when some datagram is received."""

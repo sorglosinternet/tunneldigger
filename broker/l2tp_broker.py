@@ -27,7 +27,7 @@ import sys
 import signal
 import functools as ft
 
-
+import asyncudp
 import repoze.lru
 
 from l2tp import *
@@ -78,7 +78,7 @@ class TunnelManager(object):
         self.loop = asyncio.get_running_loop()
         self.hooks = {}
         self.setup_hooks()
-        self.protocol = self.transport = None
+        self.protocol = TunneldiggerProtocol(self, None)
         self.close_future = close_future
 
         # Log some configuration variables
@@ -135,8 +135,9 @@ class TunnelManager(object):
 
     async def setup_tunnels(self):
         await self.cleanup_tunnels()
-        self.transport, self.protocol = await self.loop.create_datagram_endpoint(
-            lambda: TunneldiggerProtocol(self, None), sock=get_socket(self.bind))
+        self.socket = await asyncudp.create_socket(sock=get_socket(self.bind))
+        self.protocol.socket = self.socket
+        self.sock_do = asyncio.create_task(self.protocol.sock_loop())
 
     def tunnel_exception(self, tunnel: Tunnel, exc: Exception):
         """
@@ -227,13 +228,14 @@ class TunnelManager(object):
         """
 
         # Ignore tunnel setup if the manager is closing.
+        # ToDo: move this into tunnel
         if self.closed:
             return None, False
 
         try:
             ifreq = (bytes(tunnel.session_name, 'utf-8') + b'\0' * 16)[:16]
             data = struct.pack("16si", ifreq, mtu)
-            fcntl.ioctl(tunnel.socket, SIOCSIFMTU, data)
+            fcntl.ioctl(tunnel.llsocket, SIOCSIFMTU, data)
         except IOError:
             logger.warning("Failed to set MTU for tunnel %d! Is the interface down?" % tunnel.id)
 

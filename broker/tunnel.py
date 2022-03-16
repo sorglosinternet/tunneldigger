@@ -3,6 +3,8 @@ import datetime
 import logging
 import socket
 
+import asyncudp
+
 from l2tp import L2TPTunnelExists, NetlinkError
 from limits import Limits
 from protocol import PDUDirection, PDUError, L2TP_TUN_OVERHEAD, IPV4_HDR_OVERHEAD, IP_MTU_DISCOVER, IP_PMTUDISC_PROBE, \
@@ -50,6 +52,9 @@ class Tunnel(object):
         self.remote_session_id = self.remote_tunnel_id
         self.session_name = "l2tp%d%d" % (self.session_id, self.remote_session_id)
         self.cookie = cookie
+        # low level unix socket
+        self.llsocket = None
+        # high level asyncudp socket
         self.socket = None
 
         self.pmtu = 1446
@@ -196,6 +201,7 @@ class Tunnel(object):
 
     def rx_limit(self, limit_pdu, limit_config_pdu):
         # Client requests limit configuration
+        # TODO: configure as async?
         if not self.limits.configure(limit_pdu.type, limit_config_pdu):
             LOG.warning("Unknown type of limit (%d) requested on tunnel %d." % (limit_pdu.type, self.id))
         self.protocol.tx_relack(self.remote, limit_pdu.sequence)
@@ -207,7 +213,7 @@ class Tunnel(object):
         """
         Close the tunnel and remove all mappings.
         """
-        for task in [self.keep_alive_do, self.pmtu_probe_do]:
+        for task in [self.keep_alive_do, self.pmtu_probe_do, self.sock_do]:
             if task:
                 task.cancel()
 
@@ -226,9 +232,7 @@ class Tunnel(object):
         # Transmit error message so the other end can tear down the tunnel
         # immediately instead of waiting for keepalive timeout
         self.protocol.tx_error(self.remote, reason)
-        if self.socket:
-            self.socket.close()
-        del self.socket
+        self.socket.close()
 
 
     async def setup_tunnel(self):
@@ -236,12 +240,13 @@ class Tunnel(object):
         Sets up the L2TPv3 kernel tunnel for data transfer.
         """
         try:
-            self.socket = get_socket(self.bind)
-            self.socket.connect(self.remote)
-            self.socket.setsockopt(socket.IPPROTO_IP, IP_MTU_DISCOVER, IP_PMTUDISC_PROBE)
-            self.transport, self.protocol = await self.loop.create_datagram_endpoint(
-                lambda: TunneldiggerProtocol(self.broker, self),
-                sock=self.socket)
+            self.llsocket = get_socket(self.bind)
+            self.llsocket.connect(self.remote)
+            self.llsocket.setsockopt(socket.IPPROTO_IP, IP_MTU_DISCOVER, IP_PMTUDISC_PROBE)
+            self.socket = await asyncudp.create_socket(sock=self.llsocket)
+            self.protocol.socket = self.socket
+            self.sock_do = asyncio.create_task(self.protocol.sock_loop())
+
         except socket.error:
             raise TunnelSetupFailed
 
@@ -253,14 +258,14 @@ class Tunnel(object):
 
         # Make the socket an encapsulation socket by asking the kernel to do so
         try:
-            await self.manager.netlink.tunnel_create(self.id, self.remote_tunnel_id, self.socket.fileno())
+            await self.manager.netlink.tunnel_create(self.id, self.remote_tunnel_id, self.llsocket.fileno())
             await self.manager.netlink.session_create(self.id, self.session_id, self.remote_session_id,
                                                       self.session_name)
         except L2TPTunnelExists as exc:
-            self.socket.close()
+            self.llsocket.close()
             self.manager.tunnel_exception(self, exc)
         except NetlinkError as exc:
-            self.socket.close()
+            self.llsocket.close()
             self.manager.tunnel_exception(self, exc)
 
         # Spawn periodic keepalive transmitter and PMTUD
