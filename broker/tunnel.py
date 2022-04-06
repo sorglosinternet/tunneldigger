@@ -1,9 +1,8 @@
 import asyncio
+import asyncio_dgram
 import datetime
 import logging
 import socket
-
-import asyncudp
 
 from l2tp import L2TPTunnelExists, NetlinkError
 from limits import Limits
@@ -73,12 +72,6 @@ class Tunnel(object):
             self.last_keepalive_sequence_number = 0
         return self.last_keepalive_sequence_number
 
-    def setup(self):
-        """
-        Setup the tunnel and netfilter rules.
-        """
-        asyncio.create_task(self.setup_tunnel())
-
     async def _keep_alive_do(self):
         """
         Periodically transmits keepalives over the tunnel and checks
@@ -87,7 +80,7 @@ class Tunnel(object):
         do some "optimisation" and drop udp packets containing the same content.
         """
         while True:
-            self.protocol.tx_keepalive(self.remote, self._next_keepalive_sequence_number())
+            await self.protocol.tx_keepalive(self.remote, self._next_keepalive_sequence_number())
 
             # Check if we are still alive or not; if not, kill the tunnel
             timeout_interval = self.manager.config.getint("broker", "tunnel_timeout")
@@ -124,7 +117,7 @@ class Tunnel(object):
             for _ in range(4):
                 for size in [1334, 1400, 1450, 1476, 1492, 1500]:
                     try:
-                        self.protocol.tx_pmtu(self.remote, size)
+                        await self.protocol.tx_pmtu(self.remote, size)
                         self.num_pmtu_probes += 1
                     except Exception:
                         pass
@@ -143,7 +136,7 @@ class Tunnel(object):
                 asyncio.create_task(self._update_mtu())
 
             # Notify the client of the detected PMTU
-            self.protocol.tx_pmtunotify(self.remote, self.pmtu)
+            await self.protocol.tx_pmtunotify(self.remote, self.pmtu)
 
             # Increase probe interval until it reaches 10 minutes
             probe_interval = min(600, probe_interval * 2)
@@ -163,25 +156,24 @@ class Tunnel(object):
         LOG.debug("Detected PMTU of %d for tunnel %d." % (detected_pmtu, self.id))
         self.tunnel_mtu = detected_pmtu
 
-    def rx_error(self, pdu):
+    async def rx_error(self, pdu):
         if pdu.error:
             LOG.warning(
                 "Error message received from client, tearing down tunnel %d. Reason %d" % (self.id, pdu.error))
         else:
             LOG.warning("Error message received from client, tearing down tunnel %d." % self.id)
-        asyncio.create_task(self.manager.close_tunnel(self,
-                                                      PDUDirection.ERROR_REASON_FROM_SERVER.value & PDUError.ERROR_REASON_OTHER_REQUEST.value))
+        await self.manager.close_tunnel(self, PDUDirection.ERROR_REASON_FROM_SERVER.value & PDUError.ERROR_REASON_OTHER_REQUEST.value)
 
-    def rx_pmtu(self, data):
+    async def rx_pmtu(self, data):
         if self.pmtu_fixed:
             return
 
         # Reply with ACK packet
-        self.protocol.tx_pmtuack(self.remote, len(data))
+        await self.protocol.tx_pmtuack(self.remote, len(data))
         # self.handler.send_message(self.socket, CONTROL_TYPE_PMTUD_ACK,
         #   construct.Int16ub.build(len(data)))
 
-    def rx_pmtuack(self, pdu):
+    async def rx_pmtuack(self, pdu):
         # Decode ACK packet and extract size
         psize = pdu.pmtu + IPV4_HDR_OVERHEAD
         self.num_pmtu_replies += 1
@@ -189,24 +181,24 @@ class Tunnel(object):
         if psize > self.probed_pmtu:
             self.probed_pmtu = psize
 
-    def rx_pmtunotify(self, pdu):
+    async def rx_pmtunotify(self, pdu):
         if not self.manager.config.getboolean("broker", "pmtu_discovery"):
             return
         # Decode MTU notification packet
         if self.peer_pmtu != pdu.pmtu:
             self.peer_pmtu = pdu.pmtu
-            asyncio.create_task(self._update_mtu())
+            await self._update_mtu()
 
         # TODO: reliable ACK on type reliable
 
-    def rx_limit(self, limit_pdu, limit_config_pdu):
+    async def rx_limit(self, limit_pdu, limit_config_pdu):
         # Client requests limit configuration
         # TODO: configure as async?
         if not self.limits.configure(limit_pdu.type, limit_config_pdu):
             LOG.warning("Unknown type of limit (%d) requested on tunnel %d." % (limit_pdu.type, self.id))
-        self.protocol.tx_relack(self.remote, limit_pdu.sequence)
+        await self.protocol.tx_relack(self.remote, limit_pdu.sequence)
 
-    def rx_keepalive(self, _pdu):
+    async def rx_keepalive(self, _pdu):
         self.keep_alive()
 
     async def close(self, reason=PDUError.ERROR_REASON_UNDEFINED.value):
@@ -231,7 +223,7 @@ class Tunnel(object):
 
         # Transmit error message so the other end can tear down the tunnel
         # immediately instead of waiting for keepalive timeout
-        self.protocol.tx_error(self.remote, reason)
+        await self.protocol.tx_error(self.remote, reason)
         self.socket.close()
 
 
@@ -243,7 +235,7 @@ class Tunnel(object):
             self.llsocket = get_socket(self.bind)
             self.llsocket.connect(self.remote)
             self.llsocket.setsockopt(socket.IPPROTO_IP, IP_MTU_DISCOVER, IP_PMTUDISC_PROBE)
-            self.socket = await asyncudp.create_socket(sock=self.llsocket)
+            self.socket = await asyncio_dgram.from_socket(sock=self.llsocket)
             self.protocol.socket = self.socket
             self.sock_do = asyncio.create_task(self.protocol.sock_loop())
 
@@ -272,15 +264,15 @@ class Tunnel(object):
         self.keep_alive_do = asyncio.create_task(self._keep_alive_do())
         self.pmtu_probe_do = asyncio.create_task(self._pmtu_probe_do())
 
-    def call_session_up_hooks(self):
+    async def call_session_up_hooks(self):
         """
         Invokes any registered session establishment hooks for all sessions. This
         method must be called AFTER the tunnel has been established (after a
         confirmation packet has been transmitted from the broker to the client),
         otherwise port translation will not work and the tunnel will be dead.
         """
-        asyncio.create_task(self.manager.hook('session.up', self.id, self.session_id, self.session_name, self.pmtu,
-                                              self.remote[0], self.remote[1], self.remote[1], self.uuid))
+        await self.manager.hook('session.up', self.id, self.session_id, self.session_name, self.pmtu,
+                                              self.remote[0], self.remote[1], self.remote[1], self.uuid)
 
     def keep_alive(self):
         """

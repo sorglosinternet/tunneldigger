@@ -2,6 +2,7 @@
 
 import asyncio
 import asyncudp
+import asyncio_dgram
 import logging
 from enum import Enum
 
@@ -184,60 +185,66 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
         # ensure self.socket is present before calling sock_loop()
         while True:
             try:
-                data, addr = await self.socket.recvfrom()
-                self.datagram_received(data, addr)
-            except asyncudp.ClosedError:
+                data, addr = await self.socket.recv()
+                await self.datagram_received(data, addr)
+            except OSError as exp:
+                if exp.errno != 90: # ignore Message too long exception
+                    raise
+            except asyncio_dgram.aio.TransportClosed:
                 self.socket.close()
                 self.socket = None
                 if self.tunnel:
-                    await self.tunnel.close()
+                    asyncio.create_task(self.tunnelmanager.close_tunnel(self.tunnel))
                 return
 
-    def _send(self, data, endpoint):
+    async def _send(self, data, endpoint):
         if self.socket is None:
             return
-        self.socket.sendto(data, endpoint)
+        await self.socket.send(data, endpoint)
 
-    def tx_control(self, endpoint, pdu_type, data: bytes):
+    async def tx_control(self, endpoint, pdu_type, data: bytes):
         control = ControlMessage.build(dict(version=1, type=pdu_type.value, data_size=len(data), data=data))
-        self._send(control, endpoint)
+        await self._send(control, endpoint)
 
-    def tx_usage(self, endpoint, usage, features=None):
+    async def tx_usage(self, endpoint, usage, features=None):
         pdu = UsageMessage.build(dict(usage=usage, features=features))
-        self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_USAGE, pdu)
+        await self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_USAGE, pdu)
 
-    def tx_cookie(self, endpoint, cookie):
+    async def tx_cookie(self, endpoint, cookie):
         pdu = CookieMessage.build(dict(cookie=cookie))
-        self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_COOKIE, pdu)
+        await self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_COOKIE, pdu)
 
-    def tx_error(self, endpoint, error):
+    async def tx_error(self, endpoint, error):
         pdu = ErrorMessage.build(dict(error=error))
-        self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_ERROR, pdu)
+        await self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_ERROR, pdu)
 
-    def tx_tunnel(self, endpoint, tunnel_id, features=None):
+    async def tx_tunnel(self, endpoint, tunnel_id, features=None):
         pdu = TunnelMessage.build(dict(tunnel_id=tunnel_id, features=features))
-        self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_TUNNEL, pdu)
+        await self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_TUNNEL, pdu)
 
-    def tx_keepalive(self, endpoint, sequence):
+    async def tx_keepalive(self, endpoint, sequence):
         pdu = KeepAliveMessage.build(dict(sequence=sequence))
-        self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_KEEPALIVE, pdu)
+        await self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_KEEPALIVE, pdu)
 
-    def tx_pmtu(self, endpoint, size):
+    async def tx_pmtu(self, endpoint, size):
         control = ControlMessage.build(dict(version=1, type=PDUTypes.CONTROL_TYPE_PMTUD.value, data_size=0, data=b''))
         control += b'\x00' * (size - IPV4_HDR_OVERHEAD - L2TP_CONTROL_SIZE - 6)
-        self._send(control, endpoint)
+        await self._send(control, endpoint)
 
-    def tx_pmtuack(self, endpoint, pmtu):
+    async def tx_pmtuack(self, endpoint, pmtu):
         pdu = PMTUAckMessage.build(dict(pmtu=pmtu))
-        self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_PMTUD_ACK, pdu)
+        await self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_PMTUD_ACK, pdu)
 
-    def tx_pmtunotify(self, endpoint, pmtu):
+    async def tx_pmtunotify(self, endpoint, pmtu):
         pdu = PMTUNotifyMessage.build(dict(pmtu=pmtu))
-        self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_PMTUD_NTFY, pdu)
+        await self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_PMTUD_NTFY, pdu)
 
-    def tx_relack(self, endpoint, sequence):
+    async def tx_relack(self, endpoint, sequence):
         pdu = ReliableAckMessage.build(dict(sequence=sequence))
-        self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_REL_ACK, pdu)
+        await self.tx_control(endpoint, PDUTypes.CONTROL_TYPE_REL_ACK, pdu)
+
+    async def rx_unknown(self, endpoint, data):
+        return self.packet_error(None, "Ignoring Error PDU %s" % str(endpoint), data)
 
     def connection_made(self, transport):
         self.socket = transport
@@ -253,9 +260,9 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
     def connection_lost(self, exc):
         LOG.error("Lost UDP connection!")
         if self.tunnel:
-            self.tunnel.close()
+            asyncio.create_task(self.tunnelmanager.close_tunnel(self.tunnel))
 
-    def datagram_received(self, data, endpoint):
+    async def datagram_received(self, data, endpoint):
         """Called when some datagram is received."""
         if self.tunnelmanager is None or self.tunnelmanager.closed:
             return
@@ -280,7 +287,7 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
         # PMTUD are special because they don't have a payload
         if pdu_type == PDUTypes.CONTROL_TYPE_PMTUD:
             if tunnel:
-                tunnel.rx_pmtu(data)
+                await tunnel.rx_pmtu(data)
             return
 
         try:
@@ -299,7 +306,7 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
             }
 
             if pdu_type in tunnel_pdu:
-                return tunnel_pdu[pdu_type](pdu)
+                return await tunnel_pdu[pdu_type](pdu)
             elif pdu_type == PDUTypes.CONTROL_TYPE_LIMIT:
                 if pdu.type == LIMIT_TYPE_BANDWIDTH_DOWN:
                     try:
@@ -307,7 +314,7 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
                     except Exception as exp:
                         self.packet_error(tunnel, "Failed to parse Limit type %x" % pdu.type, data)
                         LOG.debug("While parsing LimitMessage %s", pdu.type, exc_info=True)
-                    return tunnel.rx_limit(pdu, config_pdu)
+                    return await tunnel.rx_limit(pdu, config_pdu)
 
         invalid_without_tunnel = [
             PDUTypes.CONTROL_TYPE_KEEPALIVE,
@@ -317,18 +324,18 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
         ]
 
         if not tunnel and pdu_type in invalid_without_tunnel:
-            self.tunnelmanager.unknown_tunnel(endpoint)
+            await self.tunnelmanager.unknown_tunnel(endpoint)
             return self.packet_error(tunnel, "Received %s without an assosiated tunnel." % pdu_type, data)
 
         tunnel_manager_pdu = {
             PDUTypes.CONTROL_TYPE_USAGE: self.tunnelmanager.usage,
             PDUTypes.CONTROL_TYPE_COOKIE: self.tunnelmanager.issue_cookie,
             PDUTypes.CONTROL_TYPE_PREPARE: self.tunnelmanager.prepare,
-            PDUTypes.CONTROL_TYPE_ERROR: lambda x, y: self.packet_error(tunnel, "Ignoring Error PDU %s" % str(endpoint), data)
+            PDUTypes.CONTROL_TYPE_ERROR: self.rx_unknown,
         }
 
         if pdu_type in tunnel_manager_pdu:
-            return tunnel_manager_pdu[pdu_type](endpoint, pdu)
+            return await tunnel_manager_pdu[pdu_type](endpoint, pdu)
         else:
             return self.packet_error(tunnel, "Unhandled packet PDU type %s" % pdu_type, data)
 

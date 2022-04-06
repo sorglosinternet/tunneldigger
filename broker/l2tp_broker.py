@@ -27,7 +27,7 @@ import sys
 import signal
 import functools as ft
 
-import asyncudp
+import asyncio_dgram
 import repoze.lru
 
 from l2tp import *
@@ -135,7 +135,7 @@ class TunnelManager(object):
 
     async def setup_tunnels(self):
         await self.cleanup_tunnels()
-        self.socket = await asyncudp.create_socket(sock=get_socket(self.bind))
+        self.socket = await asyncio_dgram.from_socket(sock=get_socket(self.bind))
         self.protocol.socket = self.socket
         self.sock_do = asyncio.create_task(self.protocol.sock_loop())
 
@@ -179,7 +179,7 @@ class TunnelManager(object):
         finally:
             self.close_future.set_result(None)
 
-    def issue_cookie(self, endpoint, _pdu):
+    async def issue_cookie(self, endpoint, _pdu):
         """
         Issues a new cookie for the given endpoint.
 
@@ -192,9 +192,9 @@ class TunnelManager(object):
 
         cookie = os.urandom(8)
         self.cookies.put(endpoint, cookie)
-        self.protocol.tx_cookie(endpoint, cookie)
+        await self.protocol.tx_cookie(endpoint, cookie)
 
-    def usage(self, endpoint, _pdu):
+    async def usage(self, endpoint, _pdu):
         """
         send usage
 
@@ -204,7 +204,7 @@ class TunnelManager(object):
         """
 
         val = min(int(1.0 * (len(self.tunnels) / (self.max_tunnels * 1.0)) * 255), 255)
-        self.protocol.tx_usage(endpoint, val)
+        await self.protocol.tx_usage(endpoint, val)
 
     def verify_cookie(self, endpoint, cookie):
         """
@@ -278,7 +278,7 @@ class TunnelManager(object):
             return self.tunnels[endpoint]
         return None
 
-    def unknown_tunnel(self, endpoint):
+    async def unknown_tunnel(self, endpoint):
         """
         Received a pdu from an unknown tunnel.
 
@@ -286,9 +286,9 @@ class TunnelManager(object):
         :return:
         """
         # TODO: keep errors in a limited list to not answer every packet of an invalid tunnel
-        self.protocol.tx_error(endpoint, PDUError.ERROR_REASON_UNDEFINED.value)
+        await self.protocol.tx_error(endpoint, PDUError.ERROR_REASON_UNDEFINED.value)
 
-    def prepare(self, endpoint, pdu):
+    async def prepare(self, endpoint, pdu):
         """
         called when a prepare PDU has been received
         """
@@ -302,16 +302,16 @@ class TunnelManager(object):
             return
 
         # First check if this tunnel has already been prepared
-        tunnel, created = self.setup_tunnel(self.bind, endpoint, pdu)
+        tunnel, created = await self.setup_tunnel(self.bind, endpoint, pdu)
         if tunnel is None:
-            self.protocol.tx_error(endpoint, PDUError.ERROR_REASON_FAILURE.value)
+            await self.protocol.tx_error(endpoint, PDUError.ERROR_REASON_FAILURE.value)
             return
-        self.protocol.tx_tunnel(endpoint, tunnel.id, FEATURE_UNIQUE_SESSION_ID)
+        await self.protocol.tx_tunnel(endpoint, tunnel.id, FEATURE_UNIQUE_SESSION_ID)
 
         # Invoke any session up hooks
-        tunnel.call_session_up_hooks()
+        await tunnel.call_session_up_hooks()
 
-    def setup_tunnel(self, bind, remote, pdu):
+    async def setup_tunnel(self, bind, remote, pdu):
         """
         Sets up a new tunnel or returns the data for an existing
         tunnel.
@@ -361,7 +361,7 @@ class TunnelManager(object):
         self.tunnels[remote] = tunnel
 
         try:
-            tunnel.setup()
+            await tunnel.setup_tunnel()
         except IndexError:
             # No available tunnel indices, reject tunnel creation
             return None, False
