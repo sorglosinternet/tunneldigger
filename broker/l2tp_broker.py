@@ -378,7 +378,7 @@ class TunnelManager(object):
             return None, False
 
         if self.config.getboolean('log', 'log_ip_addresses'):
-            logger.info("New tunnel (id=%d/%d uuid=%s) created with %s." % (tunnel.id, tunnel.remote_tunnel_id, tunnel.uuid, tunnel.remote[0]))
+            logger.info("New tunnel (id=%d/%d uuid=%s) created with %s." % (tunnel.id, tunnel.remote_tunnel_id, tunnel.uuid, tunnel.remote))
         else:
             logger.info("New tunnel (id=%d/%d uuid=%s) created." % (tunnel.id, tunnel.remote_tunnel_id, tunnel.uuid))
 
