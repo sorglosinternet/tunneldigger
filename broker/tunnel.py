@@ -91,8 +91,7 @@ class Tunnel(object):
                 else:
                     LOG.warning("Session with tunnel %d timed out." % self.id)
 
-                asyncio.create_task(self.manager.close_tunnel(self,
-                                                              PDUDirection.ERROR_REASON_FROM_SERVER.value & PDUError.ERROR_REASON_TIMEOUT.value))
+                await self.manager.close_tunnel(self, PDUDirection.ERROR_REASON_FROM_SERVER.value & PDUError.ERROR_REASON_TIMEOUT.value)
                 return
 
             await asyncio.sleep(60.0)
@@ -133,7 +132,7 @@ class Tunnel(object):
                 continue
             elif detected_pmtu > 0 and detected_pmtu != self.pmtu:
                 self.pmtu = detected_pmtu
-                asyncio.create_task(self._update_mtu())
+                await self._update_mtu()
 
             # Notify the client of the detected PMTU
             await self.protocol.tx_pmtunotify(self.remote, self.pmtu)
