@@ -209,7 +209,7 @@ class Tunnel(object):
     def rx_keepalive(self, _pdu):
         self.keep_alive()
 
-    async def close(self, kill=True, reason=PDUError.ERROR_REASON_UNDEFINED.value):
+    async def close(self, reason=PDUError.ERROR_REASON_UNDEFINED.value):
         """
         Close the tunnel and remove all mappings.
         """

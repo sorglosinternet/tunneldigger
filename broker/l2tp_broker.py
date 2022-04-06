@@ -164,7 +164,7 @@ class TunnelManager(object):
 
         try:
             # Ensure that all tunnels get closed
-            tunnels = (tunnel.close(kill=False, reason=PDUError.ERROR_REASON_SHUTDOWN.value) for tunnel in self.tunnels.values())
+            tunnels = (tunnel.close(reason=PDUError.ERROR_REASON_SHUTDOWN.value) for tunnel in self.tunnels.values())
 
             try:
                 await asyncio.gather(*tunnels)
