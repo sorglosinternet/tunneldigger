@@ -253,7 +253,7 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
     def connection_lost(self, exc):
         LOG.error("Lost UDP connection!")
         if self.tunnel:
-            self.tunnel.terminate("Lost connection")
+            self.tunnel.close()
 
     def datagram_received(self, data, endpoint):
         """Called when some datagram is received."""
