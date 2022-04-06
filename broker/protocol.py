@@ -200,7 +200,10 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
     async def _send(self, data, endpoint):
         if self.socket is None:
             return
-        await self.socket.send(data, endpoint)
+        if self.tunnel:
+            await self.socket.send(data)
+        else:
+            await self.socket.send(data, endpoint)
 
     async def tx_control(self, endpoint, pdu_type, data: bytes):
         control = ControlMessage.build(dict(version=1, type=pdu_type.value, data_size=len(data), data=data))
