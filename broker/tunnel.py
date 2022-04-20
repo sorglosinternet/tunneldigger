@@ -222,7 +222,7 @@ class Tunnel(object):
 
         # Transmit error message so the other end can tear down the tunnel
         # immediately instead of waiting for keepalive timeout
-        await self.protocol.tx_error(self.remote, reason)
+        await self.manager.protocol.tx_error(self.remote, reason)
         self.socket.close()
 
 
