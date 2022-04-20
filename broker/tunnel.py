@@ -62,6 +62,7 @@ class Tunnel(object):
         self.tunnel_mtu = 1446
         self.session = None
         self.pmtu_fixed = pmtu_fixed
+        self.closing = False
 
     def __repr__(self):
         return "<Tunnel %d/%d>" % (self.id, self.remote_tunnel_id)
@@ -79,7 +80,7 @@ class Tunnel(object):
         The sequence number is needed because some ISP (usually cable or mobile operators)
         do some "optimisation" and drop udp packets containing the same content.
         """
-        while True:
+        while not self.closing:
             await self.protocol.tx_keepalive(self.remote, self._next_keepalive_sequence_number())
 
             # Check if we are still alive or not; if not, kill the tunnel
@@ -91,7 +92,8 @@ class Tunnel(object):
                 else:
                     LOG.warning("Session with tunnel %d timed out." % self.id)
 
-                await self.manager.close_tunnel(self, PDUDirection.ERROR_REASON_FROM_SERVER.value & PDUError.ERROR_REASON_TIMEOUT.value)
+                if not self.closing:
+                    asyncio.create_task(self.manager.close_tunnel(self, PDUDirection.ERROR_REASON_FROM_SERVER.value & PDUError.ERROR_REASON_TIMEOUT.value))
                 return
 
             await asyncio.sleep(60.0)
@@ -104,7 +106,7 @@ class Tunnel(object):
             return
 
         probe_interval = 15
-        while True:
+        while not self.closing:
             await asyncio.sleep(probe_interval)
 
             # Reset measured PMTU
@@ -204,6 +206,9 @@ class Tunnel(object):
         """
         Close the tunnel and remove all mappings.
         """
+        if self.closing:
+            return
+        self.closing = True
         for task in [self.keep_alive_do, self.pmtu_probe_do, self.sock_do]:
             if task:
                 task.cancel()
