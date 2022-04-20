@@ -109,15 +109,11 @@ class TunnelManager(object):
 
         # Execute the registered hook
         logger.debug("Executing hook '%s' via script '%s %s'." % (name, script, str([str(x) for x in args])))
-        try:
-            script_process = await asyncio.create_subprocess_exec(
-                script, *(str(x) for x in args),
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL)
-            await script_process.wait()
-        except:
-            logger.warning("Failed to execute hook '%s'!" % script)
-            logger.warning(traceback.format_exc())
+        script_process = await asyncio.create_subprocess_exec(
+                    script, *(str(x) for x in args),
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL)
+        await script_process.wait()
 
     async def cleanup_tunnels(self):
         """
