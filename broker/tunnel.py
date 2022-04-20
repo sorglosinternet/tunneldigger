@@ -209,7 +209,7 @@ class Tunnel(object):
         if self.closing:
             return
         self.closing = True
-        for task in [self.keep_alive_do, self.pmtu_probe_do, self.sock_do]:
+        for task in [self.keep_alive_do, self.pmtu_probe_do]:
             if task:
                 task.cancel()
 
