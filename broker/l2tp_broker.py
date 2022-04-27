@@ -66,9 +66,7 @@ class TunnelManager(object):
         self.secret = os.urandom(32)
         id_base = config.getint('broker', 'tunnel_id_base')
         # TODO: make tunnel_ids a set
-        self.tunnel_ids = []
-        for tunnel_id in range(id_base, id_base + self.max_tunnels + 1):
-            self.tunnel_ids.append(tunnel_id)
+        self.tunnel_ids = [x for x in range(id_base, id_base + self.max_tunnels + 1)]
         self.interface = config.get('broker', 'interface')
         self.address = config.get('broker', 'address')
         # TODO: add multiple port support again
@@ -170,7 +168,7 @@ class TunnelManager(object):
 
             # Close any stale tunnels that might still be up
             id_base = self.config.getint('broker', 'tunnel_id_base')
-            self.tunnel_ids = range(id_base, id_base + self.max_tunnels + 1)
+            self.tunnel_ids = [x for x in range(id_base, id_base + self.max_tunnels + 1)]
             await self.cleanup_tunnels()
         finally:
             self.close_future.set_result(None)
