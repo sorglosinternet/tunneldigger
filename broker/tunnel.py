@@ -120,6 +120,8 @@ class Tunnel(object):
                     try:
                         await self.protocol.tx_pmtu(self.remote, size)
                         self.num_pmtu_probes += 1
+                    except asyncio.TimeoutError:
+                        raise
                     except Exception:
                         pass
                 await asyncio.sleep(1)
