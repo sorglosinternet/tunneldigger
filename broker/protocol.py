@@ -51,11 +51,11 @@ class PDUTypes(Enum):
 # left nibble is direction
 class PDUError(Enum):
     # right nibble is error code
-    ERROR_REASON_OTHER_REQUEST = 0x01  # other site requested
-    ERROR_REASON_SHUTDOWN = 0x02  # shutdown
-    ERROR_REASON_TIMEOUT = 0x03
-    ERROR_REASON_FAILURE = 0x04  # e.q. on malloc() failure
-    ERROR_REASON_UNDEFINED = 0x05
+    ERROR_REASON_OTHER_REQUEST = 0x00  # other site requested
+    ERROR_REASON_SHUTDOWN = 0x01  # shutdown
+    ERROR_REASON_TIMEOUT = 0x02
+    ERROR_REASON_FAILURE = 0x03  # e.q. on malloc() failure
+    ERROR_REASON_UNDEFINED = 0x04
 
 
 class PDUDirection(Enum):
