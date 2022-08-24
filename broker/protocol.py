@@ -182,8 +182,9 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
         self.socket = None
 
     def _disconnect(self):
-        self.socket.close()
-        self.socket = None
+        if self.socket:
+            self.socket.close()
+            self.socket = None
         if self.tunnel:
             asyncio.create_task(self.tunnelmanager.close_tunnel(self.tunnel))
 
