@@ -123,7 +123,7 @@ class Tunnel(object):
                     except asyncio.TimeoutError:
                         raise
                     except Exception:
-                        pass
+                        LOG.exception("Got unhandled PMTU exception")
                 await asyncio.sleep(1)
 
             # Collect all acknowledgements
