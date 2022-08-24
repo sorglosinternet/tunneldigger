@@ -122,6 +122,11 @@ class Tunnel(object):
                         self.num_pmtu_probes += 1
                     except asyncio.TimeoutError:
                         raise
+                    except OSError as err:
+                        # ignore Message too long exceptions
+                        if err.errno == 90:
+                            break
+                        LOG.exception("Got unhandled PMTU OSError exception")
                     except Exception:
                         LOG.exception("Got unhandled PMTU exception")
                 await asyncio.sleep(1)
