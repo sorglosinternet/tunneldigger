@@ -194,7 +194,13 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
                 data, addr = await self.socket.recv()
                 await self.datagram_received(data, addr)
             except OSError as exp:
-                if exp.errno != 90: # ignore Message too long exception
+                if exp.errno == 90:
+                    # ignore Message too long exception
+                    continue
+                elif exp.errno == 111:
+                    # Connection refused
+                    return self._disconnect()
+                else:
                     raise
             except asyncio_dgram.aio.TransportClosed:
                 return self._disconnect()
