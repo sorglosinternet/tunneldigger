@@ -192,6 +192,8 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
         # ensure self.socket is present before calling sock_loop()
         while True:
             try:
+                if not self.socket:
+                    return
                 data, addr = await self.socket.recv()
                 await self.datagram_received(data, addr)
             except OSError as exp:
@@ -204,6 +206,9 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
                 else:
                     raise
             except asyncio_dgram.aio.TransportClosed:
+                return self._disconnect()
+            except Exception as exp:
+                LOG.exception("Socket loop received unknown exception.")
                 return self._disconnect()
 
     async def _send(self, data, endpoint):
