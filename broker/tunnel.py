@@ -130,7 +130,7 @@ class Tunnel(object):
 
             detected_pmtu = max(self.probed_pmtu - L2TP_TUN_OVERHEAD, 1280)
             if not self.probed_pmtu or not self.num_pmtu_replies:
-                LOG.warning("Got no replies to any PMTU probes for tunnel %d." % self.id)
+                LOG.warning("Got no replies to any PMTU probes for tunnel %d/%s." % (self.id, self.uuid))
                 continue
             elif detected_pmtu > 0 and detected_pmtu != self.pmtu:
                 self.pmtu = detected_pmtu
