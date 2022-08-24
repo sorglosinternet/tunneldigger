@@ -181,6 +181,12 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
         self.tunnel = tunnel
         self.socket = None
 
+    def _disconnect(self):
+        self.socket.close()
+        self.socket = None
+        if self.tunnel:
+            asyncio.create_task(self.tunnelmanager.close_tunnel(self.tunnel))
+
     async def sock_loop(self):
         # ensure self.socket is present before calling sock_loop()
         while True:
@@ -191,11 +197,7 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
                 if exp.errno != 90: # ignore Message too long exception
                     raise
             except asyncio_dgram.aio.TransportClosed:
-                self.socket.close()
-                self.socket = None
-                if self.tunnel:
-                    asyncio.create_task(self.tunnelmanager.close_tunnel(self.tunnel))
-                return
+                return self._disconnect()
 
     async def _send(self, data, endpoint):
         if self.socket is None:
