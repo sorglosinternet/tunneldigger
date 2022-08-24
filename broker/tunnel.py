@@ -161,8 +161,12 @@ class Tunnel(object):
 
     async def rx_error(self, pdu):
         if pdu.error:
-            LOG.warning(
-                "Error message received from client, tearing down tunnel %d. Reason %d" % (self.id, pdu.error))
+            if pdu.error & PDUError.ERROR_REASON_SHUTDOWN.value:
+                who = "server" if pdu.error & 0x0f == PDUDirection.ERROR_REASON_FROM_SERVER.value else "client"
+                LOG.info("%s requested to normal shutdown tunnel %d", who, self.id)
+            else:
+                LOG.warning(
+                    "Error message received from client, tearing down tunnel %d. Reason %d" % (self.id, pdu.error))
         else:
             LOG.warning("Error message received from client, tearing down tunnel %d." % self.id)
         await self.manager.close_tunnel(self, PDUDirection.ERROR_REASON_FROM_SERVER.value & PDUError.ERROR_REASON_OTHER_REQUEST.value)
