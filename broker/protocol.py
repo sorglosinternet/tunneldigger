@@ -1,7 +1,6 @@
 #!/usr/bin/python
 
 import asyncio
-import asyncudp
 import asyncio_dgram
 import logging
 from enum import Enum
