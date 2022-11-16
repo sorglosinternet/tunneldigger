@@ -188,6 +188,9 @@ class TunnelManager(object):
         self.cookies.put(endpoint, cookie)
         await self.protocol.tx_cookie(endpoint, cookie)
 
+    def calc_usage(self) -> int:
+        return min(int(1.0 * (len(self.tunnels) / (self.max_tunnels * 1.0)) * 255), 255)
+
     async def usage(self, endpoint, _pdu):
         """
         send usage
@@ -197,8 +200,7 @@ class TunnelManager(object):
           0 (broker is not used)..255 (broker is used to hard)
         """
 
-        val = min(int(1.0 * (len(self.tunnels) / (self.max_tunnels * 1.0)) * 255), 255)
-        await self.protocol.tx_usage(endpoint, val)
+        await self.protocol.tx_usage(endpoint, self.calc_usage())
 
     def verify_cookie(self, endpoint, cookie):
         """
@@ -378,6 +380,38 @@ class TunnelManager(object):
 
         return tunnel, True
 
+    def dump_broker(self, signal: str):
+        logger.error("Received signal %s", signal)
+        manager_state = f"""
+Overview:
+    Tunnels:                {len(self.tunnels)}
+    Usage:                  {self.calc_usage()}
+    Max:                    {self.max_tunnels}
+"""
+        logger.error(manager_state)
+        for remote in self.tunnels:
+            tunnel = self.tunnels[remote]
+            output = f"""
+Tunnel {tunnel.uuid} {tunnel.id}/{tunnel.remote_tunnel_id}
+     remote uuid:           {tunnel.remote_tunnel_id}
+     remote:                {tunnel.remote}
+     pmtu:                  {tunnel.pmtu}
+     session:               {tunnel.session_id} / {tunnel.remote_session_id}
+     dev:                   {tunnel.session_name}
+     cookie:                {tunnel.cookie}
+     features:              {tunnel.client_features}
+     last keep alive:       {tunnel.last_alive}
+     last keep alive seq:   {tunnel.last_keepalive_sequence_number}
+     uptime:                {tunnel.uptime}
+     uptime_dt:             {tunnel.uptime_dt.isoformat()}
+     downtime:              {tunnel.downtime}
+     downtime_dt:           {tunnel.downtime_dt}
+     keep job:              {tunnel.keep_alive_do}
+     pmtu job:              {tunnel.pmtu_probe_do}
+     closing:               {tunnel.closing}"""
+
+            logger.error(output)
+
 
 def setup_logging(config):
     filename = config.get("log", "filename")
@@ -435,6 +469,7 @@ async def main():
         manager = TunnelManager(config, close_future)
         for signame in ('SIGINT', 'SIGTERM'):
             asyncio.get_running_loop().add_signal_handler(getattr(signal, signame), ft.partial(shutdown_broker, signame))
+        asyncio.get_running_loop().add_signal_handler(getattr(signal, 'SIGUSR1'), ft.partial(manager.dump_broker, signame))
 
         await close_future
 
