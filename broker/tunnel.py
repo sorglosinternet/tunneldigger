@@ -1,4 +1,6 @@
 import asyncio
+import time
+
 import asyncio_dgram
 import datetime
 import logging
@@ -63,6 +65,8 @@ class Tunnel(object):
         self.session = None
         self.pmtu_fixed = pmtu_fixed
         self.closing = False
+        self.uptime = time.monotonic()
+        self.uptime_dt = datetime.datetime.now()
 
     def __repr__(self):
         return "<Tunnel %d/%d>" % (self.id, self.remote_tunnel_id)
