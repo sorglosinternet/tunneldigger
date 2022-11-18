@@ -67,6 +67,8 @@ class Tunnel(object):
         self.closing = False
         self.uptime = time.monotonic()
         self.uptime_dt = datetime.datetime.now()
+        self.downtime = None
+        self.downtime_dt = None
 
     def __repr__(self):
         return "<Tunnel %d/%d>" % (self.id, self.remote_tunnel_id)
@@ -224,6 +226,8 @@ class Tunnel(object):
         if self.closing:
             return
         self.closing = True
+        self.downtime = time.monotonic()
+        self.downtime_dt = datetime.datetime.now()
         for task in [self.keep_alive_do, self.pmtu_probe_do]:
             if task:
                 task.cancel()
