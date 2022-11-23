@@ -79,6 +79,12 @@ class Tunnel(object):
             self.last_keepalive_sequence_number = 0
         return self.last_keepalive_sequence_number
 
+    def time_since_up(self):
+        if self.downtime:
+            return self.downtime - self.uptime
+        else:
+            return time.monotonic() - self.uptime
+
     async def _keep_alive_do(self):
         """
         Periodically transmits keepalives over the tunnel and checks
@@ -93,10 +99,10 @@ class Tunnel(object):
             timeout_interval = self.manager.config.getint("broker", "tunnel_timeout")
             if datetime.datetime.now() - self.last_alive > datetime.timedelta(seconds=timeout_interval):
                 if self.manager.config.getboolean('log', 'log_ip_addresses'):
-                    LOG.warning("Session with tunnel %d to %s:%d timed out." % (self.id, self.remote[0],
-                                                                                self.remote[1]))
+                    LOG.warning("Session with tunnel %d to %s:%d timed out. (uptime: %d)" % (self.id, self.remote[0],
+                                                                                self.remote[1], self.time_since_up()))
                 else:
-                    LOG.warning("Session with tunnel %d timed out." % self.id)
+                    LOG.warning("Session with tunnel %d timed out (uptime: %d)." % (self.id, self.time_since_up()))
 
                 if not self.closing:
                     asyncio.create_task(self.manager.close_tunnel(self, PDUDirection.ERROR_REASON_FROM_SERVER.value & PDUError.ERROR_REASON_TIMEOUT.value))
