@@ -469,7 +469,7 @@ async def main():
         manager = TunnelManager(config, close_future)
         for signame in ('SIGINT', 'SIGTERM'):
             asyncio.get_running_loop().add_signal_handler(getattr(signal, signame), ft.partial(shutdown_broker, signame))
-        asyncio.get_running_loop().add_signal_handler(getattr(signal, 'SIGUSR1'), ft.partial(manager.dump_broker, signame))
+        asyncio.get_running_loop().add_signal_handler(getattr(signal, 'SIGUSR1'), ft.partial(manager.dump_broker, 'SIGUSR1'))
 
         await close_future
 
