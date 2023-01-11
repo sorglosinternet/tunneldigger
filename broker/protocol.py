@@ -204,7 +204,7 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
                     return self._disconnect()
                 else:
                     LOG.exception("Unknown OSError, closing tunnel")
-                    return self.disconnect()
+                    return self._disconnect()
             except asyncio_dgram.aio.TransportClosed:
                 return self._disconnect()
             except Exception as exp:
