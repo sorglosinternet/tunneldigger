@@ -225,7 +225,7 @@ class Tunnel(object):
     async def rx_keepalive(self, _pdu):
         self.keep_alive()
 
-    async def close(self, reason=PDUError.ERROR_REASON_UNDEFINED.value):
+    async def close(self, reason=PDUError.ERROR_REASON_UNDEFINED.value, send_tx_error=True):
         """
         Close the tunnel and remove all mappings.
         """
@@ -252,7 +252,8 @@ class Tunnel(object):
 
         # Transmit error message so the other end can tear down the tunnel
         # immediately instead of waiting for keepalive timeout
-        await self.manager.protocol.tx_error(self.remote, reason)
+        if send_tx_error:
+            await self.manager.protocol.tx_error(self.remote, reason)
         self.socket.close()
 
 
@@ -302,6 +303,36 @@ class Tunnel(object):
         """
         await self.manager.hook('session.up', self.id, self.session_id, self.session_name, self.pmtu,
                                               self.remote[0], self.remote[1], self.remote[1], self.uuid)
+
+    async def socket_error(self, exc):
+        """
+        Called by the protocol to handle socket errors
+
+        @param error_no: An os errno if available
+        @type error_no: int
+        @param exc: The exception to throw
+        @type exc: Exception
+        @return: True if the sock_loop should be continued
+        @rtype: bool
+        """
+        if isinstance(exc, OSError):
+            error_no = exc.errno
+
+            if error_no == errno.EMSGSIZE:
+                # ignore Message too long exception
+                return True
+            elif error_no == errno.ECONNREFUSED:
+                asyncio.get_running_loop().call_soon(asyncio.create_task(self.close(send_tx_error=False)))
+            elif error_no is not None:
+                LOG.exception("Unknown OSError, closing tunnel")
+                asyncio.get_running_loop().call_soon(asyncio.create_task(self.close(PDUError.ERROR_REASON_FAILURE)))
+        elif isinstance(exc, asyncio_dgram.aio.TransportClosed):
+            asyncio.get_running_loop().call_soon(asyncio.create_task(self.close()))
+        else:
+            LOG.exception("Socket loop received unknown exception. Closing tunnel")
+            asyncio.get_running_loop().call_soon(asyncio.create_task(self.close()))
+
+        return False
 
     def keep_alive(self):
         """

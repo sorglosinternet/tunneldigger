@@ -19,6 +19,7 @@
 #
 import asyncio
 import configparser
+import errno
 import fcntl
 import logging.handlers
 import os
@@ -379,6 +380,47 @@ class TunnelManager(object):
             logger.info("New tunnel (id=%d/%d uuid=%s) created." % (tunnel.id, tunnel.remote_tunnel_id, tunnel.uuid))
 
         return tunnel, True
+
+    async def socket_error(self, exc):
+        """
+        Called by the protocol to handle socket errors
+
+        @param error_no: An os errno if available
+        @type error_no: int
+        @param exc: The exception to throw
+        @type exc: Exception
+        @return: True if the sock_loop should be continued
+        @rtype: bool
+        """
+        def socket_is_healthy():
+            return self.socket.socket() >= 0
+
+        ignore_oserrors = [ errno.EMSGSIZE, errno.ECONNREFUSED ]
+        if isinstance(exc, OSError):
+            error_no = exc.errno
+
+            if error_no in ignore_oserrors:
+                return True
+            else:
+                LOG.exception("Unknown OSError received by Manager")
+                if socket_is_healthy:
+                    return True
+                else:
+                    LOG.error("Manager socket died.")
+                    asyncio.get_running_loop().call_soon(asyncio.create_task(self.close()))
+                    return False
+        elif isinstance(exc, asyncio_dgram.aio.TransportClosed):
+            LOG.error("Tunnelmanager socket has been closed. Exiting")
+            asyncio.get_running_loop().call_soon(asyncio.create_task(self.close()))
+            return False
+        else:
+            LOG.exception("Tunnelmanager Socket loop received unknown exception. Checking socket health")
+            if socket_is_healthy:
+                return True
+            else:
+                asyncio.get_running_loop().call_soon(asyncio.create_task(self.close()))
+                return False
+        return False
 
     def dump_broker(self, signal: str):
         logger.error("Received signal %s", signal)

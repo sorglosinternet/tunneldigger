@@ -180,12 +180,21 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
         self.tunnel = tunnel
         self.socket = None
 
-    def _disconnect(self):
-        if self.socket:
-            self.socket.close()
-            self.socket = None
+
+    async def _socket_error(self, exc):
+        """
+
+        @param errno: An os errno if available
+        @type errno: int
+        @param exc: The exception to throw
+        @type exc: Exception
+        @return: True if the sock_loop should be continued
+        @rtype: bool
+        """
         if self.tunnel:
-            asyncio.create_task(self.tunnelmanager.close_tunnel(self.tunnel))
+            return await self.tunnel.socket_error(exc)
+        else:
+            return await self.tunnelmanager.socket_error(exc)
 
     async def sock_loop(self):
         # ensure self.socket is present before calling sock_loop()
@@ -195,21 +204,9 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
                     return
                 data, addr = await self.socket.recv()
                 await self.datagram_received(data, addr)
-            except OSError as exp:
-                if exp.errno == 90:
-                    # ignore Message too long exception
-                    continue
-                elif exp.errno == 111:
-                    # Connection refused
-                    return self._disconnect()
-                else:
-                    LOG.exception("Unknown OSError, closing tunnel")
-                    return self._disconnect()
-            except asyncio_dgram.aio.TransportClosed:
-                return self._disconnect()
-            except Exception as exp:
-                LOG.exception("Socket loop received unknown exception.")
-                return self._disconnect()
+            except Exception as exc:
+                if not await self._socket_error(exc):
+                    return
 
     async def _send(self, data, endpoint):
         if self.socket is None:
@@ -219,11 +216,8 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
                 await self.socket.send(data)
             else:
                 await self.socket.send(data, endpoint)
-        except OSError as err:
-            if err.errno == 111:
-                # connection refused
-                return self._disconnect()
-            raise
+        except Exception as exc:
+            self._socket_error(exc)
 
     async def tx_control(self, endpoint, pdu_type, data: bytes):
         control = ControlMessage.build(dict(version=1, type=pdu_type.value, data_size=len(data), data=data))
@@ -363,7 +357,7 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
             return self.packet_error(tunnel, "Unhandled packet PDU type %s" % pdu_type, data)
 
     def error_received(self, exc):
-        """Called when a send or receive operation raises an OSError.
+        """ Called by the Dataprotocol when a send or receive operation raises an OSError.
         (Other than BlockingIOError or InterruptedError.)
         """
-        pass
+        asyncio.get_running_loop().call_soon(asyncio.create_task(self._socket_error(exc)))
