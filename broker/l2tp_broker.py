@@ -422,6 +422,11 @@ class TunnelManager(object):
                 return False
         return False
 
+
+    def call_help(self, signal: str):
+        import pdb
+        pdb.set_trace()
+
     def dump_broker(self, signal: str):
         logger.error("Received signal %s", signal)
         manager_state = f"""
@@ -512,6 +517,7 @@ async def main():
         for signame in ('SIGINT', 'SIGTERM'):
             asyncio.get_running_loop().add_signal_handler(getattr(signal, signame), ft.partial(shutdown_broker, signame))
         asyncio.get_running_loop().add_signal_handler(getattr(signal, 'SIGUSR1'), ft.partial(manager.dump_broker, 'SIGUSR1'))
+        asyncio.get_running_loop().add_signal_handler(getattr(signal, 'SIGUSR2'), ft.partial(manager.call_help, 'SIGUSR2'))
 
         await close_future
 
