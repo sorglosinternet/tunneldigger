@@ -37,7 +37,7 @@ class Limits(object):
             # TODO: turn down the tunnel if tc fails
             try:
                 tc = traffic_control.TrafficControl(self.tunnel.session_name)
-                asyncio.get_running_loop().call_soon(tc.set_fixed_bandwidth, bandwidth)
+                asyncio.get_running_loop().call_soon(asyncio.create_task(tc.set_fixed_bandwidth(bandwidth)))
             except traffic_control.TrafficControlError:
                 LOG.warning("Unable to configure traffic shaping rules for tunnel %d." % self.tunnel.id)
 
