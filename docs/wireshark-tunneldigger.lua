@@ -62,10 +62,11 @@ function tunneldigger.dissector(buffer, pinfo, tree)
   local payload_len = buffer(5, 1):uint()
 
   if l2tp_type ~= 0x80 then
-    -- give it to l2tp
-    local udp_table = DissectorTable.get("udp.port")
-    local l2tp_dis = udp_table:get_dissector(1701)
-    l2tp_dis:call(buffer, pinfo, tree)
+    -- l2tp seems to have problems to define this as ethernet.
+	-- manual ignore the header and give it to the ethernet handler
+    -- local udp_table = DissectorTable.get("udp.port")
+    local eth_dis = Dissector.get("eth_withoutfcs")
+    eth_dis:call(buffer(12, buffer:len() - 12):tvb(), pinfo, tree)
     return
   end
 
