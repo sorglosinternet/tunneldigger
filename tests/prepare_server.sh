@@ -42,12 +42,19 @@ lighttpd -f /tmp/lighttpd.conf
 # setup virtualenv
 cd /srv/
 if grep -Fq 'Python :: 3 :: Only' /srv/tunneldigger/broker/setup.py; then
+	echo "Using python 3 because Pipfile setup.py requires."
     virtualenv -p /usr/bin/python3 env_tunneldigger
 elif [ -e "/srv/tunneldigger/broker/Pipfile" ]; then
+	echo "Using python 3 because Pipfile exists"
     virtualenv -p /usr/bin/python3 env_tunneldigger
 else
+	echo "Using python 2"
     virtualenv -p /usr/bin/python2 env_tunneldigger
 fi
+
+ls -al /srv/tunneldigger/
+ls -al /srv/tunneldigger/broker
+find /srv
 
 . /srv/env_tunneldigger/bin/activate
 if [ -f /srv/tunneldigger/broker/setup.py ]; then
