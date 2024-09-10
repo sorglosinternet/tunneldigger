@@ -1,5 +1,7 @@
 #!/bin/sh
 
+cat /srv/tunneldigger/broker/l2tp_broker.cfg || true
+find /srv/tunneldigger/broker/
 if [ -f /srv/tunneldigger/broker/l2tp_broker.py ]; then
   # Handle old broker version.
   cd /srv/tunneldigger/broker/
