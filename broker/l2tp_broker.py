@@ -407,18 +407,18 @@ class TunnelManager(object):
                     return True
                 else:
                     LOG.error("Manager socket died.")
-                    asyncio.get_running_loop().call_soon(asyncio.create_task(self.close()))
+                    asyncio.create_task(self.close())
                     return False
         elif isinstance(exc, asyncio_dgram.aio.TransportClosed):
             LOG.error("Tunnelmanager socket has been closed. Exiting")
-            asyncio.get_running_loop().call_soon(asyncio.create_task(self.close()))
+            asyncio.create_task(self.close())
             return False
         else:
             LOG.exception("Tunnelmanager Socket loop received unknown exception. Checking socket health")
             if socket_is_healthy:
                 return True
             else:
-                asyncio.get_running_loop().call_soon(asyncio.create_task(self.close()))
+                asyncio.create_task(self.close())
                 return False
         return False
 

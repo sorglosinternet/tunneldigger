@@ -322,15 +322,15 @@ class Tunnel(object):
                 # ignore Message too long exception
                 return True
             elif error_no == errno.ECONNREFUSED:
-                asyncio.get_running_loop().call_soon(asyncio.create_task(self.close(send_tx_error=False)))
+                asyncio.create_task(self.close(send_tx_error=False))
             elif error_no is not None:
                 LOG.exception("Unknown OSError, closing tunnel")
-                asyncio.get_running_loop().call_soon(asyncio.create_task(self.close(PDUError.ERROR_REASON_FAILURE)))
+                asyncio.create_task(self.close(PDUError.ERROR_REASON_FAILURE))
         elif isinstance(exc, asyncio_dgram.aio.TransportClosed):
-            asyncio.get_running_loop().call_soon(asyncio.create_task(self.close()))
+            asyncio.create_task(self.close())
         else:
             LOG.exception("Socket loop received unknown exception. Closing tunnel")
-            asyncio.get_running_loop().call_soon(asyncio.create_task(self.close()))
+            asyncio.create_task(self.close())
 
         return False
 

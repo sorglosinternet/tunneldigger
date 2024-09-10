@@ -360,4 +360,4 @@ class TunneldiggerProtocol(asyncio.DatagramProtocol):
         """ Called by the Dataprotocol when a send or receive operation raises an OSError.
         (Other than BlockingIOError or InterruptedError.)
         """
-        asyncio.get_running_loop().call_soon(asyncio.create_task(self._socket_error(exc)))
+        asyncio.create_task(self._socket_error(exc))
