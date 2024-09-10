@@ -53,7 +53,6 @@ def setup_template(ubuntu_release):
         "iproute2",
         "bridge-utils",
         "libnetfilter-conntrack3",
-        "python-dev",
         "python3-dev",
         "libevent-dev",
         "ebtables",
