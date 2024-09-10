@@ -43,6 +43,8 @@ lighttpd -f /tmp/lighttpd.conf
 cd /srv/
 if grep -Fq 'Python :: 3 :: Only' /srv/tunneldigger/broker/setup.py; then
     virtualenv -p /usr/bin/python3 env_tunneldigger
+elif [ -e "/srv/tunneldigger/broker/Pipfile" ]; then
+    virtualenv -p /usr/bin/python3 env_tunneldigger
 else
     virtualenv -p /usr/bin/python2 env_tunneldigger
 fi
