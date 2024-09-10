@@ -64,7 +64,6 @@ def setup_template(ubuntu_release):
         "libasyncns-dev",
         "linux-libc-dev",
         "libffi-dev",
-        "python-cffi",
         "libnfnetlink-dev",
         "libnetfilter-conntrack-dev",
         ]
