@@ -64,6 +64,7 @@ fi
 cp /srv/tunneldigger/broker/l2tp_broker.cfg.example /srv/tunneldigger/broker/l2tp_broker.cfg || true
 sed -i "s/^address=.*/address=$IP/" /srv/tunneldigger/broker/l2tp_broker.cfg
 sed -i "s/^interface=.*/interface=eth1/" /srv/tunneldigger/broker/l2tp_broker.cfg
+sed -i "s!^filename=.*!filename=/testing/tunneldigger-broker.log!" /srv/tunneldigger/broker/l2tp_broker.cfg
 
 # save the ip into a file where the http server can access it
 echo -n "$IP" > /ip.txt

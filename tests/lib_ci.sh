@@ -52,11 +52,13 @@ test_nose() {
   cd $WORKSPACE/tests/
   begingroup "Old client, new server"
   if ! CLIENT_REV=$old_rev SERVER_REV=$new_rev nosetests3 --nocapture test_nose.py ; then
+    cat "./$WORKSPACE/tunneldigger-broker.log" || true
     fail "while running test_nose cli <> server.\nclient: '$old_rev'\nserver: '$new_rev'"
   fi
   endgroup
   begingroup "Old server, new client"
   if ! CLIENT_REV=$new_rev SERVER_REV=$old_rev nosetests3 --nocapture test_nose.py ; then
+    cat "./$WORKSPACE/tunneldigger-broker.log" || true
     fail "while running test_nose cli <> server.\nclient: '$new_rev'\nserver: '$old_rev'"
   fi
   endgroup
