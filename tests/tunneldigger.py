@@ -107,7 +107,10 @@ def configure_mounts(container):
     local_path = os.path.dirname(os.path.realpath(__file__))
     git_repo = local_path + '/../.git'
     log_path = local_path + '/logs'
-    os.mkdir(log_path)
+    try:
+        os.mkdir(log_path)
+    except FileExistsError:
+        pass
 
     LOG("Git repo is at {}".format(git_repo))
 
