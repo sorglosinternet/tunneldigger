@@ -1,8 +1,8 @@
 [broker]
 ; IP address the broker will listen and accept tunnels on
 address=127.0.0.1
-; Ports where the broker will listen on
-port=53,123,8942
+; Port where the broker will listen on (only a single port is supported)
+port=8942
 ; Interface with that IP address
 interface=lo
 ; Maximum number of cached cookies, required for establishing a
