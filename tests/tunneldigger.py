@@ -106,11 +106,15 @@ def configure_mounts(container):
     # mount testing dir
     local_path = os.path.dirname(os.path.realpath(__file__))
     git_repo = local_path + '/../.git'
+    log_path = local_path + '/logs'
+    os.mkdir(log_path)
+
     LOG("Git repo is at {}".format(git_repo))
 
     # TODO: this mount is very dirty and may be DANGEROUS!!! Unescaped.
     # mount this directory to /testing
     container.append_config_item('lxc.mount.entry', '%s testing none bind,ro,create=dir 0 0' % local_path)
+    container.append_config_item('lxc.mount.entry', '%s logs none bind,rw,create=dir 0 0' % log_path)
     container.append_config_item('lxc.mount.entry', '%s git_repo none bind,ro,create=dir 0 0' % git_repo)
 
     # TODO: check if this is required because of libc-dev package
