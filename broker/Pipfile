@@ -1,0 +1,22 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+asyncudp = {git = "https://github.com/lynxis/asyncudp.git"}
+construct = "==2.10.67"
+gevent = "==21.8.0"
+greenlet = "==1.1.2"
+netfilter = "==0.6.4"
+"repoze.lru" = "==0.7"
+six = "==1.10.0"
+"zope.event" = "==4.5.0"
+"zope.interface" = "==5.4.0"
+asyncio-dgram = "==2.1.2"
+telnetlib3 = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.10"
