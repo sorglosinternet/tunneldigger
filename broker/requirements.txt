@@ -4,3 +4,4 @@ greenlet
 netfilter
 repoze.lru
 asyncio-dgram
+asyncudp @ git+https://github.com/lynxis/asyncudp.git@2c34003df0df4b3fe9bf946c2ec929d7fad26706
